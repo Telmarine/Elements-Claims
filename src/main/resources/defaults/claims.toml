@@ -1,0 +1,59 @@
+# ============================================================
+#  ELEMENTS: CLAIMS  —  claims.toml
+#  Numbers, items and colours. Switches are in features.toml.
+#  Reload with /claims reload.
+#  Missing lines use the built-in values, so updates never break this file.
+# ============================================================
+
+[allowance]
+# Chunks every new player can claim.
+# Ranks raise it with the number node claims.limit
+# (Elements: Nexus rank entry: "claims.limit=300").
+starter = 100
+
+[deed]
+# The item the Claim Deed is made from. Plain items of this kind do nothing;
+# only Deeds (which carry a hidden tag) claim land.
+item = "minecraft:paper"
+
+[sub_areas]
+# The item the Sub-area Stick is made from (plain sticks do nothing).
+item = "minecraft:stick"
+# Most sub-areas one claim can have.
+max_per_claim = 20
+
+[distance]
+# Gap (in chunks) kept between different players' claims.
+# Only used when min_distance is on in features.toml.
+chunks = 2
+
+[claims]
+# Name of a new claim. {player} = the owner's name.
+default_name = "{player}'s Claim"
+# Dimensions where nobody can claim, e.g. ["minecraft:the_end", "tenko:spawn"]
+disabled_dimensions = []
+# Longest claim name allowed (characters).
+name_max_length = 32
+
+[ranks]
+# Most ranks one claim can have, Owner and Visitor included. 3-20.
+max = 10
+# Longest rank name allowed (characters).
+name_max_length = 16
+
+[borders]
+# How far (in chunks) around the player outlines are drawn. 1-8.
+radius = 3
+# Most outline pieces sent to one player at once.
+max_segments = 300
+# Block the outline bars are made of. The glow colour is drawn around it.
+block = "minecraft:glass"
+
+[borders.colors]
+own = "#55FF55"
+trusted = "#55FFFF"
+other = "#FF5555"
+admin = "#FFAA00"
+sub_area = "#FFFF55"
+# The unclaimed chunk you stand in while holding the Deed.
+preview = "#FFFFFF"

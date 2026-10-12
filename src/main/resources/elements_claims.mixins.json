@@ -1,0 +1,23 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.tac5studios.elementsclaims.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "server": [
+    "FlowingFluidMixin",
+    "FireBlockMixin",
+    "LeavesBlockMixin",
+    "SnowLayerBlockMixin",
+    "IceBlockMixin",
+    "DispenserBlockMixin",
+    "CreateDrillMixin",
+    "CreateBlockBreakingMovementBehaviourMixin",
+    "CreateHarvesterMovementBehaviourMixin",
+    "CrystalToolsMixin",
+    "CrystalToolsStripMixin",
+    "TomsConnectorMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

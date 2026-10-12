@@ -1,0 +1,14 @@
+# ============================================================
+#  ELEMENTS: CLAIMS  —  expiry.toml (abandoned claims)
+#  Switch on in features.toml [expiry]. Reload with /claims reload.
+# ============================================================
+
+# Owner hasn't logged in for this many days → the claim is marked abandoned (still protected).
+days_inactive = 60
+
+# Days of protection after being marked. Then the claim is freed, or goes up for sale when
+# selling and sell_abandoned are on in features.toml. The owner logging in clears the mark.
+grace_days = 14
+
+# Players whose claims never expire (names or UUIDs). Ranks: give them claims.expiry.exempt.
+exempt_players = []

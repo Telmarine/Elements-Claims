@@ -1,0 +1,21 @@
+# ============================================================
+#  ELEMENTS: CLAIMS  —  Create limits
+#  Created because Create is installed. Switch on in features.toml [limits.mods] create = true.
+#  Only new placements are refused; machines already placed always keep running.
+#  scope: "chunk" or "claim"
+# ============================================================
+
+limits = [
+    { target = "create:mechanical_drill", max = 32, scope = "chunk" },
+    { target = "create:mechanical_saw", max = 32, scope = "chunk" },
+    { target = "create:deployer", max = 32, scope = "chunk" },
+    { target = "create:mechanical_harvester", max = 32, scope = "chunk" },
+    { target = "create:mechanical_plough", max = 32, scope = "chunk" },
+    { target = "create:encased_fan", max = 32, scope = "chunk" },
+    { target = "create:mechanical_press", max = 16, scope = "chunk" },
+    { target = "create:mechanical_mixer", max = 16, scope = "chunk" },
+    { target = "create:millstone", max = 16, scope = "chunk" },
+    { target = "create:crushing_wheel", max = 16, scope = "chunk" },
+    { target = "create:mechanical_arm", max = 32, scope = "chunk" },
+    { target = "create:steam_engine", max = 16, scope = "chunk" }
+]

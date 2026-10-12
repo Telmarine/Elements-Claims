@@ -1,0 +1,50 @@
+# ============================================================
+#  ELEMENTS: CLAIMS  —  limits.toml
+#  Lag limits: placing more of these is refused over the number. Nothing already placed is removed.
+#  Each vanilla limit is switched on in features.toml [limits.vanilla]. Reload with /claims reload.
+#  Staff with claims.bypass ignore limits; admin claims too (features.toml limits.ignore_admin_claims).
+# ============================================================
+
+[vanilla]
+armor_stand = 16
+item_frame = 64
+minecart = 16
+boat = 16
+painting = 32
+hopper = 32
+observer = 32
+piston = 32
+comparator = 64
+repeater = 64
+dropper_dispenser = 32
+redstone_lamp = 64
+furnace = 32
+beacon = 4
+spawner = 4
+
+# Where each vanilla limit counts: "chunk" or "claim" (a whole claim, its loaded chunks).
+[scopes]
+beacon = "claim"
+spawner = "claim"
+
+# Your own limits: any block or entity id, or a block/entity tag (#namespace:tag).
+#   { target = "minecraft:chest", max = 64, scope = "chunk" }
+#   { target = "#minecraft:beds", max = 8, scope = "claim", name = "Beds" }
+[custom]
+entries = []
+
+# ------------------------------------------------------------
+# Entity limits (features.toml [entity_limits]). -1 = no limit.
+# Over a limit, breeding, spawn eggs and spawners stop adding mobs and the land owner is told.
+# ------------------------------------------------------------
+[entities.per_claim]
+pets = -1
+passive = 100
+monsters = -1
+villagers = 30
+
+[entities.per_chunk]
+pets = -1
+passive = 40
+monsters = -1
+villagers = 16

@@ -1,0 +1,45 @@
+plugins {
+    id 'net.neoforged.gradle.userdev' version '7.0.165'
+}
+
+version = mod_version
+group = 'com.tac5studios.elementsclaims'
+
+base {
+    archivesName = mod_id
+}
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+
+repositories {
+    mavenLocal()      // Elements: Vault, published from the elements-vault folder (gradlew publishToMavenLocal)
+    mavenCentral()
+}
+
+dependencies {
+    implementation "net.neoforged:neoforge:${neo_version}"
+
+    // Elements: Vault (money for selling and renting land). Compile only: it comes with Elements: Economy.
+    // Claims runs without it; the market features just stay hidden.
+    compileOnly "com.tac5studios:elements_vault:${vault_version}"
+}
+
+// Compile-only stubs of other mods' classes (Create, Crystal Tools) live in src/main/java so the mixins compile
+// without those mods. They are never shipped: the real classes come from the mods.
+tasks.withType(Jar).configureEach {
+    exclude 'com/simibubi/**', 'dev/willyelton/**'
+}
+
+tasks.withType(ProcessResources).configureEach {
+    var replaceProperties = [
+            minecraft_version: minecraft_version, minecraft_version_range: minecraft_version_range,
+            neo_version: neo_version, neo_version_range: neo_version_range,
+            loader_version_range: loader_version_range,
+            mod_id: mod_id, mod_name: mod_name, mod_license: mod_license,
+            mod_version: mod_version, mod_authors: mod_authors, mod_description: mod_description,
+    ]
+    inputs.properties replaceProperties
+    filesMatching(['META-INF/neoforge.mods.toml']) {
+        expand replaceProperties + [project: project]
+    }
+}

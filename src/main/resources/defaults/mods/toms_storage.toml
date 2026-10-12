@@ -1,0 +1,10 @@
+# ============================================================
+#  ELEMENTS: CLAIMS  —  Tom's Simple Storage limits
+#  Created because Tom's Simple Storage is installed. Switch on in features.toml [limits.mods] toms_storage = true.
+# ============================================================
+
+limits = [
+    { target = "toms_storage:inventory_connector", max = 4, scope = "claim" },
+    { target = "toms_storage:storage_terminal", max = 16, scope = "claim" },
+    { target = "toms_storage:crafting_terminal", max = 16, scope = "claim" }
+]
