@@ -59,6 +59,18 @@ public final class LimitEvents {
         }
     }
 
+    /** A spawn egg used on a mob (e.g. a villager) makes a baby. Check the limit before the egg is used up. */
+    @SubscribeEvent(priority = EventPriority.LOW)
+    public static void onUseOnEntity(PlayerInteractEvent.EntityInteract e) {
+        if (!(e.getEntity() instanceof ServerPlayer p)) return;
+        if (!(e.getItemStack().getItem() instanceof SpawnEggItem)) return;
+        if (refuse(p, p.level(), e.getTarget().blockPosition(), e.getItemStack())) {
+            e.setCanceled(true);
+            e.setCancellationResult(InteractionResult.FAIL);
+            p.inventoryMenu.sendAllDataToRemote();
+        }
+    }
+
     @SubscribeEvent(priority = EventPriority.LOW)
     public static void onUseInAir(PlayerInteractEvent.RightClickItem e) {
         if (!(e.getEntity() instanceof ServerPlayer p)) return;

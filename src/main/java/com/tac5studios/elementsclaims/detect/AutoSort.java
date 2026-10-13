@@ -3,6 +3,7 @@ package com.tac5studios.elementsclaims.detect;
 import com.electronwill.nightconfig.core.Config;
 import com.electronwill.nightconfig.core.file.CommentedFileConfig;
 import com.tac5studios.elementsclaims.ElementsClaims;
+import com.tac5studios.elementsclaims.util.Alerts;
 import com.tac5studios.elementsclaims.claim.RankFlag;
 import com.tac5studios.elementsclaims.config.Features;
 import com.tac5studios.elementsclaims.protect.Classify;
@@ -49,6 +50,8 @@ public final class AutoSort {
     private static final Map<EntityType<?>, String> ENTITY_OVERRIDES = new IdentityHashMap<>();
     private static final Map<String, Map<String, Integer>> RESULTS = new TreeMap<>();
     private static boolean saveLater;
+    /** detected.toml couldn't be read: it is never rewritten until it's fixed. */
+    private static boolean broken;
     private static int timer;
 
     private AutoSort() {}
@@ -135,8 +138,40 @@ public final class AutoSort {
     private static void readFile() {
         BLOCK_OVERRIDES.clear();
         ENTITY_OVERRIDES.clear();
+        broken = false;
         Path p = file();
         if (!Files.exists(p)) return;
+        try {
+            readFrom(p);
+            return;
+        } catch (Exception ex) {
+            ElementsClaims.LOGGER.error("[Claims] Could not read {}.", p, ex);
+        }
+        // Broken: never rewrite it (that would wipe the owner's overrides). Use the last good copy until it's fixed.
+        broken = true;
+        BLOCK_OVERRIDES.clear();
+        ENTITY_OVERRIDES.clear();
+        Path bak = backupFile();
+        String used = "no backup was found, so the overrides are off";
+        if (Files.exists(bak)) {
+            try {
+                readFrom(bak);
+                used = "the last good copy (detected.toml.bak) is used for now";
+            } catch (Exception ex) {
+                BLOCK_OVERRIDES.clear();
+                ENTITY_OVERRIDES.clear();
+                used = "the backup couldn't be read either, so the overrides are off";
+            }
+        }
+        Alerts.staff("config/elements_claims/detected.toml has an error and won't be changed until it's fixed; " + used
+                + ". Fix it and run /claims reload.");
+    }
+
+    private static Path backupFile() {
+        return file().resolveSibling("detected.toml.bak");
+    }
+
+    private static void readFrom(Path p) {
         try (CommentedFileConfig cfg = CommentedFileConfig.builder(p).build()) {
             cfg.load();
             if (cfg.get("overrides.blocks") instanceof Config c) {
@@ -158,8 +193,6 @@ public final class AutoSort {
                     if (en.getValue() instanceof String v) Machines.KNOWN.put(en.getKey(), Machines.Mode.parse(v));
                 }
             }
-        } catch (Exception ex) {
-            ElementsClaims.LOGGER.error("[Claims] Could not read {}. Overrides are not used until it's fixed.", p, ex);
         }
     }
 
@@ -169,6 +202,10 @@ public final class AutoSort {
 
     /** Rewrite detected.toml: owner overrides and machines kept, results refreshed. */
     public static synchronized void save() {
+        if (broken) {
+            ElementsClaims.LOGGER.warn("[Claims] Not rewriting detected.toml: it has an error. Fix it and run /claims reload.");
+            return;
+        }
         StringBuilder b = new StringBuilder();
         b.append("# ============================================================\n");
         b.append("#  ELEMENTS: CLAIMS  —  detected.toml (auto-detect)\n");
@@ -193,6 +230,8 @@ public final class AutoSort {
         });
         try {
             Files.createDirectories(file().getParent());
+            // Keep the last good version before rewriting it.
+            if (Files.exists(file())) Files.copy(file(), backupFile(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
             Files.writeString(file(), b.toString(), StandardCharsets.UTF_8);
         } catch (IOException ex) {
             ElementsClaims.LOGGER.error("[Claims] Could not write {}.", file(), ex);

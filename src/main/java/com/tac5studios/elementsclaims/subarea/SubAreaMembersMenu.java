@@ -37,7 +37,7 @@ public final class SubAreaMembersMenu extends PagedMenu<UUID> {
     @Override
     protected boolean stillValid(Player player) {
         return player instanceof ServerPlayer sp && Features.on(Features.SUB_AREA_TRUST) && ClaimStore.byId(claim.id()) == claim
-                && claim.subArea(area.id()) == area && SubAreas.canManage(sp, claim);
+                && claim.subArea(area.id()) == area && SubAreas.canManageMembers(sp, claim, area); // owner, or the manager they picked
     }
 
     @Override
@@ -51,16 +51,32 @@ public final class SubAreaMembersMenu extends PagedMenu<UUID> {
         String name = Claiming.name(viewer.server, id);
         List<Component> lore = new ArrayList<>();
         lore.add(Msg.menu("menu.player_rank", "rank", r == null ? "?" : r.name()));
-        if (id.equals(area.renter)) lore.add(Msg.menu("subarea.is_renter"));
+        Long leaving = area.leaving.get(id);
+        if (leaving != null) {
+            lore.add(Msg.menu("subarea.leaving_in", "time", SubAreaLeave.timeLeft(leaving)));
+            lore.add(Msg.menu("subarea.leaving_cancel"));
+        }
         lore.add(Msg.menu("subarea.member_click"));
         set(slot, Button.of(MenuItems.head(viewer.server, id, name, lore), (p, c) -> {
-            if (c.isRight()) {
-                area.members().remove(id);
-                if (id.equals(area.renter)) area.renter = null;
+            if (claim.subArea(area.id()) != area) return;
+            boolean owner = com.tac5studios.elementsclaims.claim.Manage.full(p, claim);
+            // A manager can't change their own entry or anyone at or above their own rank.
+            if (!owner && (id.equals(p.getUUID()) || (r != null && !SubAreas.assignable(p, claim, area).contains(r)))) {
+                Msg.send(p, "subarea.manager_cant", "player", name);
+                return;
+            }
+            if (c.isShift() && leaving != null) {
+                SubAreaLeave.cancel(p, claim, area, id);
+                Msg.send(p, "subarea.leave_cancelled", "player", name, "area", area.name());
+            } else if (c.isRight()) {
+                if (SubAreaLeave.remove(p, claim, area, id)) Msg.send(p, "trust.sub_removed", "player", name, "area", area.name());
             } else {
-                List<Rank> trusted = claim.ranks().subList(1, claim.ranks().size() - 1);
+                List<Rank> trusted = SubAreas.assignable(p, claim, area);
+                if (trusted.isEmpty()) return;
                 int i = r == null ? -1 : trusted.indexOf(r);
-                area.members().put(id, trusted.get((i + 1) % trusted.size()).id());
+                Rank next = trusted.get((i + 1) % trusted.size());
+                area.members().put(id, next.id());
+                com.tac5studios.elementsclaims.log.ActionLog.log(com.tac5studios.elementsclaims.log.ActionLog.Category.SUB_AREAS, p, claim, "sub-area rank changed", name + " in " + area.name() + " to " + next.name());
             }
             ClaimStore.markDirty();
             refresh();
@@ -81,9 +97,12 @@ public final class SubAreaMembersMenu extends PagedMenu<UUID> {
                     GameProfile gp = online != null ? online.getGameProfile()
                             : who.server.getProfileCache() == null ? null : who.server.getProfileCache().get(text.trim()).orElse(null);
                     if (gp == null) Msg.send(who, "menu.player_unknown", "player", text);
-                    else if (claim.subArea(area.id()) == area) {
+                    else if (claim.isBanned(gp.getId())) Msg.send(who, "trust.sub_banned", "player", gp.getName(), "claim", claim.name());
+                    else if (claim.isOwner(gp.getId()) || gp.getId().equals(who.getUUID())) Msg.send(who, "trust.sub_self");
+                    else if (claim.subArea(area.id()) == area && !area.members().containsKey(gp.getId())) {
                         area.members().put(gp.getId(), claim.lowestTrusted().id());
                         ClaimStore.markDirty();
+                        com.tac5studios.elementsclaims.log.ActionLog.log(com.tac5studios.elementsclaims.log.ActionLog.Category.SUB_AREAS, who, claim, "sub-area trusted", gp.getName() + " in " + area.name() + " as " + claim.lowestTrusted().name());
                     }
                     new SubAreaMembersMenu(claim, area).open(who);
                 }, who -> new SubAreaMembersMenu(claim, area).open(who))));

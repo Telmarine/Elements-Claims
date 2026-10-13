@@ -61,7 +61,7 @@ public final class TrustCommands {
             trustPlayer.then(Commands.argument("subarea", StringArgumentType.string())
                     .suggests((ctx, b) -> SharedSuggestionProvider.suggest(subAreaNames(ctx.getSource()), b))
                     .then(Commands.argument("rank", StringArgumentType.string())
-                            .suggests((ctx, b) -> SharedSuggestionProvider.suggest(rankNames(ctx.getSource()), b))
+                            .suggests((ctx, b) -> SharedSuggestionProvider.suggest(rankNames(ctx.getSource(), StringArgumentType.getString(ctx, "subarea")), b))
                             .executes(TrustCommands::trustSub)));
         }
         d.register(Commands.literal("trust")
@@ -83,10 +83,13 @@ public final class TrustCommands {
                 .executes(TrustCommands::list));
     }
 
-    /** The claims a trust command applies to: the one you stand in (if yours), else all of yours. */
+    /**
+     * The claims a trust command applies to: the one you stand in (if it's yours, or your rank there has
+     * Admin Mode), else all of yours.
+     */
     private static List<Claim> targets(ServerPlayer p) {
         Claim here = ClaimStore.at(p.level(), p.blockPosition());
-        if (here != null && here.isOwner(p.getUUID())) return List.of(here);
+        if (here != null && (here.isOwner(p.getUUID()) || Manage.adminMode(p, here))) return List.of(here);
         return ClaimStore.ownedBy(p.getUUID());
     }
 
@@ -115,9 +118,10 @@ public final class TrustCommands {
             int added = 0;
             for (Claim c : claims) {
                 if (c.isMember(id)) continue;
-                c.bans().remove(id);
+                boolean wasBanned = c.bans().remove(id);
                 c.members().put(id, c.lowestTrusted().id());
                 added++;
+                com.tac5studios.elementsclaims.log.ActionLog.log(com.tac5studios.elementsclaims.log.ActionLog.Category.MEMBERS, p, c, "trusted", gp.getName() + " as " + c.lowestTrusted().name() + (wasBanned ? " (was banned, ban lifted)" : ""));
             }
             if (added == 0) {
                 Msg.send(p, "trust.already", "player", gp.getName());
@@ -147,7 +151,16 @@ public final class TrustCommands {
         int done = 0;
         for (GameProfile gp : GameProfileArgument.getGameProfiles(ctx, "player")) {
             int removed = 0;
-            for (Claim c : claims) if (c.members().remove(gp.getId()) != null) removed++;
+            for (Claim c : claims) {
+                // Admin Mode can only remove players ranked below them.
+                if (!c.isOwner(p.getUUID()) && c.isMember(gp.getId()) && !Manage.canActOn(p, c, gp.getId())) {
+                    Msg.send(p, "menu.cant_remove", "player", gp.getName());
+                    continue;
+                }
+                if (c.members().remove(gp.getId()) == null) continue;
+                removed++;
+                com.tac5studios.elementsclaims.log.ActionLog.log(com.tac5studios.elementsclaims.log.ActionLog.Category.MEMBERS, p, c, "untrusted", gp.getName());
+            }
             if (removed == 0) {
                 Msg.send(p, "trust.not_trusted", "player", gp.getName());
                 continue;
@@ -198,11 +211,23 @@ public final class TrustCommands {
             Msg.send(p, "trust.sub_stand_in_claim");
             return null;
         }
-        if (!SubAreas.canManage(p, c)) {
+        // The owner (or staff), or a player the owner made manager of one of the sub-areas here.
+        boolean manager = false;
+        for (SubArea a : c.subAreas()) if (SubAreas.canManageMembers(p, c, a)) manager = true;
+        if (!manager) {
             Msg.send(p, "trust.sub_no_permission", "claim", c.name());
             return null;
         }
         return c;
+    }
+
+    /** Managers (not the owner) can't touch themselves or anyone at or above their own rank. */
+    private static boolean managerMay(ServerPlayer p, Claim c, SubArea a, UUID target) {
+        if (Manage.full(p, c)) return true;
+        if (target.equals(p.getUUID())) return false;
+        String rid = a.members().get(target);
+        Rank r = rid == null ? null : c.rank(rid);
+        return r == null || SubAreas.assignable(p, c, a).contains(r);
     }
 
     private static SubArea findSubArea(Claim c, String name) {
@@ -224,9 +249,13 @@ public final class TrustCommands {
             Msg.send(p, "trust.sub_unknown", "area", areaName, "claim", c.name());
             return 0;
         }
+        if (!SubAreas.canManageMembers(p, c, area)) {
+            Msg.send(p, "trust.sub_no_permission", "claim", c.name());
+            return 0;
+        }
         String rankName = StringArgumentType.getString(ctx, "rank");
         Rank rank = null;
-        for (Rank r : Manage.assignable(p, c)) if (r.name().equalsIgnoreCase(rankName)) rank = r;
+        for (Rank r : SubAreas.assignable(p, c, area)) if (r.name().equalsIgnoreCase(rankName)) rank = r;
         if (rank == null) {
             Msg.send(p, "trust.sub_unknown_rank", "rank", rankName);
             return 0;
@@ -242,8 +271,19 @@ public final class TrustCommands {
                 Msg.send(p, "trust.must_be_online", "player", gp.getName());
                 continue;
             }
+            if (c.isBanned(id)) {
+                Msg.send(p, "trust.sub_banned", "player", gp.getName(), "claim", c.name());
+                continue;
+            }
+            if (!managerMay(p, c, area, id)) {
+                Msg.send(p, "subarea.manager_cant", "player", gp.getName());
+                continue;
+            }
+            String before = area.members().get(id);
             area.members().put(id, rank.id());
             done++;
+            com.tac5studios.elementsclaims.log.ActionLog.log(com.tac5studios.elementsclaims.log.ActionLog.Category.SUB_AREAS, p, c, before == null ? "sub-area trusted" : "sub-area rank changed",
+                    gp.getName() + " in " + area.name() + " as " + rank.name());
             Msg.send(p, "trust.sub_added", "player", gp.getName(), "area", area.name(), "rank", rank.name());
             ServerPlayer target = p.server.getPlayerList().getPlayer(id);
             if (target != null && ClaimStore.player(id).trustMessages) {
@@ -268,16 +308,22 @@ public final class TrustCommands {
             Msg.send(p, "trust.sub_unknown", "area", areaName, "claim", c.name());
             return 0;
         }
+        if (!SubAreas.canManageMembers(p, c, area)) {
+            Msg.send(p, "trust.sub_no_permission", "claim", c.name());
+            return 0;
+        }
         int done = 0;
         for (GameProfile gp : GameProfileArgument.getGameProfiles(ctx, "player")) {
-            if (gp.getId().equals(area.renter)) {
-                Msg.send(p, "trust.sub_renter", "player", gp.getName(), "area", area.name());
-                continue;
-            }
-            if (area.members().remove(gp.getId()) == null) {
+            if (!area.members().containsKey(gp.getId())) {
                 Msg.send(p, "trust.sub_not_member", "player", gp.getName(), "area", area.name());
                 continue;
             }
+            if (!managerMay(p, c, area, gp.getId())) {
+                Msg.send(p, "subarea.manager_cant", "player", gp.getName());
+                continue;
+            }
+            // Stops (and starts the countdown) when blocks they placed are still in the sub-area.
+            if (!com.tac5studios.elementsclaims.subarea.SubAreaLeave.remove(p, c, area, gp.getId())) continue;
             done++;
             Msg.send(p, "trust.sub_removed", "player", gp.getName(), "area", area.name());
         }
@@ -295,18 +341,20 @@ public final class TrustCommands {
         List<String> out = new ArrayList<>();
         if (p == null) return out;
         Claim c = ClaimStore.at(p.level(), p.blockPosition());
-        if (c == null || !SubAreas.canManage(p, c)) return out;
-        for (SubArea a : c.subAreas()) out.add(quote(a.name()));
+        if (c == null) return out;
+        for (SubArea a : c.subAreas()) if (SubAreas.canManageMembers(p, c, a)) out.add(quote(a.name()));
         return out;
     }
 
-    private static Collection<String> rankNames(CommandSourceStack source) {
+    private static Collection<String> rankNames(CommandSourceStack source, String areaName) {
         ServerPlayer p = source.getPlayer();
         List<String> out = new ArrayList<>();
         if (p == null) return out;
         Claim c = ClaimStore.at(p.level(), p.blockPosition());
-        if (c == null || !SubAreas.canManage(p, c)) return out;
-        for (Rank r : Manage.assignable(p, c)) out.add(quote(r.name()));
+        if (c == null) return out;
+        SubArea a = findSubArea(c, areaName);
+        if (a == null) return out;
+        for (Rank r : SubAreas.assignable(p, c, a)) out.add(quote(r.name()));
         return out;
     }
 

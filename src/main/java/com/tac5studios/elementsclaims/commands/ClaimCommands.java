@@ -1,5 +1,6 @@
 package com.tac5studios.elementsclaims.commands;
 
+import com.tac5studios.elementsclaims.log.ActionLog;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.context.CommandContext;
 import com.tac5studios.elementsclaims.ElementsClaims;
@@ -62,11 +63,46 @@ public final class ClaimCommands {
             }
             claim.then(deed);
         }
+        // /claim create <name>                start a new property on the chunk you stand in
+        claim.then(Commands.literal("create")
+                .then(Commands.argument("name", StringArgumentType.greedyString())
+                        .executes(ctx -> {
+                            ServerPlayer p = ctx.getSource().getPlayer();
+                            if (p == null) {
+                                Msg.fail(ctx.getSource(), "general.players_only");
+                                return 0;
+                            }
+                            boolean ok = Claiming.claimHere(p, StringArgumentType.getString(ctx, "name"));
+                            if (ok) com.tac5studios.elementsclaims.deed.Deed.refreshAll(p);
+                            return ok ? 1 : 0;
+                        })));
+        // /claim <property> manage            make it your active property
+        // /claim <property> transfer <player> give it to another player (with a confirm screen)
+        claim.then(Commands.argument("property", StringArgumentType.string())
+                .suggests((ctx, b) -> SharedSuggestionProvider.suggest(propertyNames(ctx.getSource()), b))
+                .then(Commands.literal("manage").executes(ClaimCommands::manage))
+                .then(Commands.literal("transfer")
+                        .then(Commands.argument("player", net.minecraft.commands.arguments.GameProfileArgument.gameProfile())
+                                .executes(ClaimCommands::transfer))));
         d.register(claim);
 
         if (Features.on(Features.ADMIN)) {
             var claims = Commands.literal("claims")
-                    .requires(s -> Perm.has(s, Perm.INFO) || Perm.has(s, Perm.RELOAD) || Perm.has(s, Perm.DETECTED) || Perm.has(s, Perm.IMPORT));
+                    .requires(s -> Perm.has(s, Perm.INFO) || Perm.has(s, Perm.RELOAD) || Perm.has(s, Perm.DETECTED) || Perm.has(s, Perm.IMPORT)
+                            || Perm.has(s, Perm.LOG));
+            if (Features.on(Features.LOG, Features.LOG_COMMAND)) {
+                // /claims log [page]  ·  /claims log find <text> [page]
+                claims.then(Commands.literal("log").requires(s -> Perm.has(s, Perm.LOG))
+                        .executes(ctx -> StaffCommands.log(ctx, null, 1))
+                        .then(Commands.argument("page", com.mojang.brigadier.arguments.IntegerArgumentType.integer(1, 100))
+                                .executes(ctx -> StaffCommands.log(ctx, null, com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "page"))))
+                        .then(Commands.literal("find")
+                                .then(Commands.argument("text", StringArgumentType.string())
+                                        .executes(ctx -> StaffCommands.log(ctx, StringArgumentType.getString(ctx, "text"), 1))
+                                        .then(Commands.argument("page", com.mojang.brigadier.arguments.IntegerArgumentType.integer(1, 100))
+                                                .executes(ctx -> StaffCommands.log(ctx, StringArgumentType.getString(ctx, "text"),
+                                                        com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "page")))))));
+            }
             if (Features.on(Features.DETECT)) {
                 claims.then(Commands.literal("detected").requires(s -> Perm.has(s, Perm.DETECTED))
                         .executes(StaffCommands::detected)
@@ -106,7 +142,7 @@ public final class ClaimCommands {
             if (Manage.canOpenMenu(p, here) && LandConfigMenu.open(p, here)) return 1;
             Rank r = here.rankOf(p.getUUID());
             Msg.send(p, "claim.here", "claim", here.name(), "owner", Claiming.ownerName(p.server, here),
-                    "chunks", here.chunks().size(), "rank", r.name());
+                    "chunks", here.chunkCount(), "rank", r.name());
             return 1;
         }
         if (Features.on(Features.MENU)) {
@@ -119,10 +155,102 @@ public final class ClaimCommands {
         if (mine.isEmpty()) Msg.send(p, "claim.list_empty");
         for (Claim c : mine) {
             ChunkPos mid = c.center();
-            Msg.send(p, "claim.list_line", "claim", c.name(), "chunks", c.chunks().size(),
+            Msg.send(p, "claim.list_line", "claim", c.name(), "chunks", c.chunkCount(),
                     "dimension", c.dimension(), "x", mid.getMiddleBlockX(), "z", mid.getMiddleBlockZ(),
                     "members", c.members().size());
         }
+        return 1;
+    }
+
+    // ---------- properties ----------
+
+    private static java.util.Collection<String> propertyNames(CommandSourceStack source) {
+        ServerPlayer p = source.getPlayer();
+        List<String> out = new java.util.ArrayList<>();
+        if (p == null) return out;
+        for (Claim c : ClaimStore.ownedBy(p.getUUID())) {
+            String n = c.name();
+            out.add(n.matches("[A-Za-z0-9_.+-]+") ? n : "\"" + n.replace("\"", "") + "\"");
+        }
+        return out;
+    }
+
+    private static Claim ownProperty(ServerPlayer p, CommandContext<CommandSourceStack> ctx) {
+        String name = StringArgumentType.getString(ctx, "property");
+        Claim c = Claiming.propertyNamed(p.getUUID(), name);
+        if (c == null) Msg.send(p, "claim.no_property", "claim", name);
+        return c;
+    }
+
+    private static int manage(CommandContext<CommandSourceStack> ctx) {
+        ServerPlayer p = ctx.getSource().getPlayer();
+        if (p == null) {
+            Msg.fail(ctx.getSource(), "general.players_only");
+            return 0;
+        }
+        Claim c = ownProperty(p, ctx);
+        if (c == null) return 0;
+        Claiming.setActive(p.getUUID(), c);
+        Msg.send(p, "claim.now_active", "claim", c.name());
+        ActionLog.log(ActionLog.Category.CLAIMING, p, c, "made active", c.name());
+        return 1;
+    }
+
+    private static int transfer(CommandContext<CommandSourceStack> ctx) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer p = ctx.getSource().getPlayer();
+        if (p == null) {
+            Msg.fail(ctx.getSource(), "general.players_only");
+            return 0;
+        }
+        if (!Features.on(Features.CLAIM_TRANSFER)) {
+            Msg.send(p, "general.disabled");
+            return 0;
+        }
+        Claim c = ownProperty(p, ctx);
+        if (c == null) return 0;
+        var profiles = net.minecraft.commands.arguments.GameProfileArgument.getGameProfiles(ctx, "player");
+        if (profiles.size() != 1) {
+            Msg.send(p, "transfer.one_player");
+            return 0;
+        }
+        com.mojang.authlib.GameProfile to = profiles.iterator().next();
+        if (to.getId().equals(p.getUUID())) {
+            Msg.send(p, "transfer.self");
+            return 0;
+        }
+        // The receiver picks where the claim goes, so they have to be online.
+        ServerPlayer receiver = p.server.getPlayerList().getPlayer(to.getId());
+        if (receiver == null) {
+            Msg.send(p, "transfer.must_be_online", "player", to.getName());
+            return 0;
+        }
+        String why = Claiming.cantReceive(to.getId(), c);
+        if (why != null) {
+            Msg.send(p, why, "player", to.getName(), "claim", c.name(), "chunks", c.chunkCount());
+            return 0;
+        }
+        com.tac5studios.elementsclaims.ui.ConfirmMenu.ask(p,
+                com.tac5studios.elementsclaims.ui.Icons.named(net.minecraft.world.item.Items.FILLED_MAP,
+                        Msg.menu("transfer.confirm_title", "claim", c.name(), "player", to.getName())),
+                List.of(Msg.menu("transfer.confirm_chunks", "chunks", c.chunkCount()),
+                        Msg.menu("transfer.confirm_warning")),
+                who -> {
+                    // Check again: things may have changed while the screen was open.
+                    if (ClaimStore.byId(c.id()) != c || !c.isOwner(who.getUUID())) return;
+                    ServerPlayer target = who.server.getPlayerList().getPlayer(to.getId());
+                    if (target == null) {
+                        Msg.send(who, "transfer.must_be_online", "player", to.getName());
+                        return;
+                    }
+                    String again = Claiming.cantReceive(to.getId(), c);
+                    if (again != null) {
+                        Msg.send(who, again, "player", to.getName(), "claim", c.name(), "chunks", c.chunkCount());
+                        return;
+                    }
+                    Msg.send(who, "transfer.offered", "claim", c.name(), "player", to.getName(), "chunks", c.chunkCount());
+                    Msg.send(target, "transfer.offer", Claiming.pairs(Claiming.room(to.getId()), "claim", c.name(), "player", who.getGameProfile().getName(), "chunks", c.chunkCount()));
+                    com.tac5studios.elementsclaims.menu.TransferMenu.offer(target, c, who.getUUID());
+                }, null);
         return 1;
     }
 
@@ -139,7 +267,7 @@ public final class ClaimCommands {
         long now = System.currentTimeMillis();
         long wait = ClaimsConfig.deedCooldownMinutes * 60_000L;
         Long last = DEED_USED.get(p.getUUID());
-        if (wait > 0 && last != null && now - last < wait && !Perm.has(p, Perm.ADMIN)) {
+        if (Features.on(Features.CLAIM_DEED_COOLDOWN) && wait > 0 && last != null && now - last < wait && !Perm.has(p, Perm.ADMIN)) {
             long left = (wait - (now - last) + 59_999) / 60_000;
             Msg.send(p, "deed.cooldown", "minutes", left);
             return 0;
@@ -166,7 +294,7 @@ public final class ClaimCommands {
         }
         Msg.send(p, "info.header", "claim", c.name(), "owner", Claiming.ownerName(p.server, c),
                 "type", Msg.raw(c.isAdmin() ? "info.type_admin" : "info.type_player"),
-                "chunks", c.chunks().size(), "private", c.isPrivate() ? "yes" : "no");
+                "chunks", c.chunkCount(), "private", c.isPrivate() ? "yes" : "no");
         for (Rank r : c.ranks()) {
             StringJoiner members = new StringJoiner(", ");
             c.members().forEach((u, id) -> {
@@ -205,11 +333,11 @@ public final class ClaimCommands {
         Msg.load();
         com.tac5studios.elementsclaims.limits.LagLimits.load();
         com.tac5studios.elementsclaims.limits.EntityLimits.load();
-        com.tac5studios.elementsclaims.market.Market.reload();
         com.tac5studios.elementsclaims.market.Expiry.reload();
         com.tac5studios.elementsclaims.detect.AutoSort.reload();
         com.tac5studios.elementsclaims.integration.Integrations.reload();
         Msg.sendLogged(ctx.getSource(), "admin.reloaded");
+        StaffCommands.logStaff(ctx.getSource(), "reload", "config files");
         return 1;
     }
 }

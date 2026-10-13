@@ -21,7 +21,7 @@ public final class KnownMods {
             new Mod("toms_storage", "Tom's Simple Storage: connectors can't reach containers in another player's claim."),
             new Mod("xyndras_crates", "Xyndra's Crates: crates can always be opened."),
             new Mod("spudaciousshops", "Spud's Shops: shops use the Shops: Use / Shops: Create flags."),
-            new Mod("elements_economy", "Elements: Economy: shops use the Shops flags; selling and renting land."),
+            new Mod("elements_economy", "Elements: Economy: shops use the Shops flags."),
             new Mod("minecolonies", "MineColonies: no claims over colonies."),
             new Mod("apothic_spawners", "Apothic Spawners: changing spawners needs Build."),
             new Mod("piggyback", "Piggyback: riding players uses Vehicles & Riding.")

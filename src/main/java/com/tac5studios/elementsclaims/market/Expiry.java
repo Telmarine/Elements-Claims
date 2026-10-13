@@ -7,6 +7,7 @@ import com.tac5studios.elementsclaims.claim.Claiming;
 import com.tac5studios.elementsclaims.claim.PlayerData;
 import com.tac5studios.elementsclaims.config.Features;
 import com.tac5studios.elementsclaims.config.TomlFile;
+import com.tac5studios.elementsclaims.log.ActionLog;
 import com.tac5studios.elementsclaims.messages.Msg;
 import com.tac5studios.elementsclaims.perms.Perm;
 import net.minecraft.server.MinecraftServer;
@@ -28,12 +29,11 @@ import java.util.UUID;
 
 /**
  * Abandoned claims (SPEC 8), all times in expiry.toml:
- *   1. Owner offline for days_inactive days → claim marked abandoned; still protected for grace_days.
- *   2. Grace over → with selling on (and sell_abandoned): the claim goes up for sale at the abandoned price and its
- *      chunks no longer count for the old owner. Otherwise the claim is deleted (free for anyone).
+ *   1. Owner offline longer than their playtime allows (playtime_days) → claim marked abandoned; still protected for grace_days.
+ *   2. Grace over → the claim is deleted (free for anyone).
  *   3. The owner logging in before that clears the mark. Exempt: players listed in expiry.toml and anyone with
  *      claims.expiry.exempt (e.g. staff ranks). Admin claims never expire.
- * Also on login: hands back items waiting from ended rents or admin-claim deaths.
+ * Also on login: hands back items waiting from admin-claim deaths.
  */
 @EventBusSubscriber(modid = ElementsClaims.MOD_ID, value = Dist.DEDICATED_SERVER)
 public final class Expiry {
@@ -59,24 +59,33 @@ public final class Expiry {
         PlayerData d = ClaimStore.player(p.getUUID());
         d.lastSeen = System.currentTimeMillis();
         d.lastName = p.getGameProfile().getName();
-        if (!d.pendingItems.isEmpty()) {
-            List<ItemStack> items = new ArrayList<>(d.pendingItems);
-            d.pendingItems.clear();
-            for (ItemStack s : items) if (!p.getInventory().add(s)) p.drop(s, false);
-            Msg.send(p, "market.items_returned", "count", items.size());
-        }
+        // Logged back in still on the death screen: wait until they respawn, or the items would be lost.
+        if (p.isAlive()) giveBack(p);
         boolean back = false;
         for (Claim c : ClaimStore.ownedBy(p.getUUID())) {
-            if (c.abandonedSince == 0 && !c.forfeited) continue;
+            if (c.abandonedSince == 0) continue;
             c.abandonedSince = 0;
-            if (c.forfeited) {
-                c.forfeited = false;
-                c.salePrice = -1;
-            }
             back = true;
+            ActionLog.log(ActionLog.Category.SYSTEM, p, c, "abandoned mark cleared", "owner logged in");
         }
         ClaimStore.markDirty();
         if (back && Features.on(Features.EXPIRY_NOTIFY)) Msg.send(p, "expiry.welcome_back");
+    }
+
+    @SubscribeEvent
+    public static void onRespawn(PlayerEvent.PlayerRespawnEvent e) {
+        if (e.getEntity() instanceof ServerPlayer p) giveBack(p);
+    }
+
+    /** Hand back items kept from an admin-claim death (saved when the player logged out on the death screen). */
+    private static void giveBack(ServerPlayer p) {
+        PlayerData d = ClaimStore.player(p.getUUID());
+        if (d.pendingItems.isEmpty()) return;
+        List<ItemStack> items = new ArrayList<>(d.pendingItems);
+        d.pendingItems.clear();
+        for (ItemStack s : items) if (!p.getInventory().add(s)) p.drop(s, false);
+        ClaimStore.markDirty();
+        Msg.send(p, "expiry.items_returned", "count", items.size());
     }
 
     @SubscribeEvent
@@ -96,13 +105,14 @@ public final class Expiry {
     /** Run the abandoned-claims check now. Returns how many claims changed. */
     public static int check(MinecraftServer server) {
         long now = System.currentTimeMillis();
-        long inactive = Math.max(1, FILE.num("days_inactive", 60)) * DAY;
         long grace = Math.max(0, FILE.num("grace_days", 14)) * DAY;
         Set<String> exempt = new HashSet<>();
         for (String s : FILE.strings("exempt_players")) exempt.add(s.toLowerCase(Locale.ROOT));
+        List<long[]> steps = playtimeSteps();
+        java.util.Map<UUID, Long> allowed = new java.util.HashMap<>();
         int changed = 0;
         for (Claim c : new ArrayList<>(ClaimStore.all())) {
-            if (c.isAdmin() || c.owner() == null || c.forfeited) continue;
+            if (c.isAdmin() || c.owner() == null) continue;
             UUID owner = c.owner();
             if (server.getPlayerList().getPlayer(owner) != null) continue;
             if (exempt.contains(owner.toString()) || exempt.contains(Claiming.name(server, owner).toLowerCase(Locale.ROOT))) continue;
@@ -114,24 +124,84 @@ public final class Expiry {
                 continue;
             }
             if (c.abandonedSince == 0) {
+                long inactive = allowed.computeIfAbsent(owner, id -> (Features.on(Features.EXPIRY_PLAYTIME)
+                        ? daysFor(playHours(server, id), steps) : Math.max(1, FILE.num("days_inactive", 60))) * DAY);
                 if (now - d.lastSeen < inactive) continue;
                 c.abandonedSince = now;
                 changed++;
                 ElementsClaims.LOGGER.info("[Claims] Claim {} of {} marked abandoned.", c.name(), Claiming.name(server, owner));
+                ActionLog.log(ActionLog.Category.SYSTEM, "Server", null, c, "marked abandoned",
+                        "owner offline " + (now - d.lastSeen) / DAY + " days, allowed " + inactive / DAY);
                 continue;
             }
             if (now - c.abandonedSince < grace) continue;
             changed++;
-            if (Market.selling() && Features.on(Features.SELL_ABANDONED)) {
-                c.forfeited = true;
-                c.salePrice = Market.abandonedPricePerChunk() * c.chunks().size();
-                ElementsClaims.LOGGER.info("[Claims] Abandoned claim {} is now for sale.", c.name());
-            } else {
-                ClaimStore.delete(c);
-                ElementsClaims.LOGGER.info("[Claims] Abandoned claim {} of {} was freed.", c.name(), Claiming.name(server, owner));
-            }
+            ActionLog.log(ActionLog.Category.SYSTEM, "Server", null, c, "abandoned claim freed", c.chunkCount() + " chunks");
+            ClaimStore.delete(c);
+            ElementsClaims.LOGGER.info("[Claims] Abandoned claim {} of {} was freed.", c.name(), Claiming.name(server, owner));
         }
         if (changed > 0) ClaimStore.markDirty();
         return changed;
+    }
+
+    // ---------- playtime ----------
+
+    private static final String[] DEFAULT_STEPS = {"1h=14", "4h=30", "12h=60", "1d=120", "7d=180", "14d=270", "30d=365"};
+
+    /** playtime_days from expiry.toml as {hours, days}, sorted by hours. Bad entries are skipped with a warning. */
+    private static List<long[]> playtimeSteps() {
+        List<String> raw = FILE.strings("playtime_days");
+        if (raw.isEmpty()) raw = List.of(DEFAULT_STEPS);
+        List<long[]> out = new ArrayList<>();
+        for (String entry : raw) {
+            try {
+                String[] kv = entry.trim().toLowerCase(Locale.ROOT).split("=");
+                String t = kv[0].trim();
+                long n = Long.parseLong(t.substring(0, t.length() - 1).trim());
+                long hours = switch (t.charAt(t.length() - 1)) {
+                    case 'h' -> n;
+                    case 'd' -> n * 24;
+                    default -> throw new IllegalArgumentException();
+                };
+                out.add(new long[]{hours, Math.max(1, Long.parseLong(kv[1].trim()))});
+            } catch (RuntimeException ex) {
+                ElementsClaims.LOGGER.warn("[Claims] expiry.toml: skipping playtime_days entry '{}' (use like \"4h=30\" or \"7d=180\").", entry);
+            }
+        }
+        if (out.isEmpty()) return playtimeStepsDefault();
+        out.sort((a, b) -> Long.compare(a[0], b[0]));
+        return out;
+    }
+
+    private static List<long[]> playtimeStepsDefault() {
+        List<long[]> out = new ArrayList<>();
+        for (String s : DEFAULT_STEPS) {
+            String[] kv = s.split("=");
+            long n = Long.parseLong(kv[0].substring(0, kv[0].length() - 1));
+            out.add(new long[]{kv[0].endsWith("d") ? n * 24 : n, Long.parseLong(kv[1])});
+        }
+        return out;
+    }
+
+    /** Days offline allowed for this much playtime: the highest step reached. Below the first step, the first step counts. */
+    static long daysFor(double hours, List<long[]> steps) {
+        long days = steps.get(0)[1];
+        for (long[] st : steps) if (hours >= st[0]) days = st[1];
+        return days;
+    }
+
+    /** Total hours played, from Minecraft's own play-time stat (world/stats/<uuid>.json). 0 if there's no file. */
+    private static double playHours(MinecraftServer server, UUID id) {
+        java.nio.file.Path file = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.PLAYER_STATS_DIR).resolve(id + ".json");
+        if (!java.nio.file.Files.isRegularFile(file)) return 0;
+        try (java.io.Reader r = java.nio.file.Files.newBufferedReader(file)) {
+            com.google.gson.JsonObject root = com.google.gson.JsonParser.parseReader(r).getAsJsonObject();
+            com.google.gson.JsonObject custom = root.getAsJsonObject("stats").getAsJsonObject("minecraft:custom");
+            if (custom == null || !custom.has("minecraft:play_time")) return 0;
+            return custom.get("minecraft:play_time").getAsLong() / 20.0 / 3600.0;
+        } catch (Exception ex) {
+            ElementsClaims.LOGGER.warn("[Claims] Could not read playtime from {}: {}", file.getFileName(), ex.getMessage());
+            return 0;
+        }
     }
 }

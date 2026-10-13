@@ -3,11 +3,16 @@
 #  Switch on in features.toml [expiry]. Reload with /claims reload.
 # ============================================================
 
-# Owner hasn't logged in for this many days → the claim is marked abandoned (still protected).
+# Used when playtime_based is off in features.toml [expiry]: days offline before claims are marked abandoned.
 days_inactive = 60
 
-# Days of protection after being marked. Then the claim is freed, or goes up for sale when
-# selling and sell_abandoned are on in features.toml. The owner logging in clears the mark.
+# How long an owner can be offline before their claims are marked abandoned (still protected),
+# based on their total playtime. "playtime=days", playtime in h (hours) or d (days).
+# They get the highest step they've reached. Under the first step, the first step counts.
+playtime_days = ["1h=14", "4h=30", "12h=60", "1d=120", "7d=180", "14d=270", "30d=365"]
+
+# Days of protection after being marked. Then the claim is freed.
+# The owner logging in before then clears the mark.
 grace_days = 14
 
 # Players whose claims never expire (names or UUIDs). Ranks: give them claims.expiry.exempt.

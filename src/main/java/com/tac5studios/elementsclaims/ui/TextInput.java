@@ -1,103 +1,95 @@
 package com.tac5studios.elementsclaims.ui;
 
 import com.tac5studios.elementsclaims.ElementsClaims;
-import net.minecraft.core.component.DataComponents;
+import com.tac5studios.elementsclaims.messages.Msg;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.TickTask;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.SimpleMenuProvider;
-import net.minecraft.world.entity.player.Inventory;
-import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.inventory.AnvilMenu;
-import net.minecraft.world.inventory.ClickType;
-import net.minecraft.world.inventory.ContainerLevelAccess;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.bus.api.EventPriority;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.event.ServerChatEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerEvent;
+import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 /**
- * Text entry with a vanilla anvil screen (claim and rank names, player names). The player types in the
- * rename box and clicks the result to submit. Costs no XP, and the paper is never given out.
+ * Text entry through chat (claim and rank names, player names). The menu closes, the player gets a
+ * prompt, and the next thing they type in chat is the answer. That chat line is never sent to anyone else.
+ * Typing "cancel", logging out or waiting too long stops it.
  */
-public final class TextInput extends AnvilMenu {
+@EventBusSubscriber(modid = ElementsClaims.MOD_ID, value = Dist.DEDICATED_SERVER)
+public final class TextInput {
 
-    private final BiConsumer<ServerPlayer, String> onSubmit;
-    private final Consumer<ServerPlayer> onCancel;
-    private String text;
-    private boolean done;
+    private static final long TIMEOUT_MS = 2 * 60 * 1000;
 
-    private TextInput(int id, Inventory inv, String start, BiConsumer<ServerPlayer, String> onSubmit, Consumer<ServerPlayer> onCancel) {
-        super(id, inv, ContainerLevelAccess.NULL);
-        this.onSubmit = onSubmit;
-        this.onCancel = onCancel;
-        this.text = start;
-        ItemStack paper = new ItemStack(Items.PAPER);
-        paper.set(DataComponents.CUSTOM_NAME, Component.literal(start));
-        inputSlots.setItem(0, paper);
-    }
+    private record Pending(BiConsumer<ServerPlayer, String> onSubmit, Consumer<ServerPlayer> onCancel, long until) {}
+
+    private static final Map<UUID, Pending> PENDING = new ConcurrentHashMap<>();
+    private static int timer;
+
+    private TextInput() {}
 
     /**
      * Ask a player to type something.
-     * @param title     screen title, e.g. "Enter a price"
-     * @param start     text already in the box
+     * @param title     what to type, e.g. "New claim name"
+     * @param start     the current value, shown so they know what they're changing (may be empty)
      * @param onSubmit  gets the typed text
-     * @param onCancel  runs if the screen closes without submitting (may be null)
+     * @param onCancel  runs if they type "cancel" (may be null). Timing out or logging out just drops it.
      */
     public static void ask(ServerPlayer player, Component title, String start,
                            BiConsumer<ServerPlayer, String> onSubmit, Consumer<ServerPlayer> onCancel) {
-        player.server.tell(new TickTask(player.server.getTickCount(), () ->
-                player.openMenu(new SimpleMenuProvider((id, inv, p) -> new TextInput(id, inv, start, onSubmit, onCancel), title))));
+        // Next tick, so it doesn't close a menu in the middle of its own click.
+        player.server.tell(new TickTask(player.server.getTickCount(), () -> {
+            player.closeContainer();
+            PENDING.put(player.getUUID(), new Pending(onSubmit, onCancel, System.currentTimeMillis() + TIMEOUT_MS));
+            Msg.send(player, "input.prompt", "prompt", title.getString());
+            if (start != null && !start.isBlank()) Msg.send(player, "input.current", "text", start);
+        }));
     }
 
-    @Override
-    public boolean setItemName(String name) {
-        text = name == null ? "" : name;
-        createResult();
-        return true;
-    }
-
-    @Override
-    public void createResult() {
-        ItemStack out = new ItemStack(Items.PAPER);
-        out.set(DataComponents.CUSTOM_NAME, Component.literal(text == null ? "" : text));
-        resultSlots.setItem(0, out);
-        broadcastChanges();
-    }
-
-    @Override
-    public void clicked(int slotId, int button, ClickType type, Player player) {
-        if (slotId >= 0 && slotId <= 2) {
-            if (slotId == 2 && player instanceof ServerPlayer sp && !done) {
-                done = true;
-                String result = text == null ? "" : text.trim();
-                sp.closeContainer();
-                try {
-                    onSubmit.accept(sp, result);
-                } catch (RuntimeException e) {
-                    ElementsClaims.LOGGER.error("[Claims] Text input handler failed.", e);
-                }
-            } else {
-                sendAllDataToRemote();
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void onChat(ServerChatEvent e) {
+        ServerPlayer p = e.getPlayer();
+        Pending pending = PENDING.remove(p.getUUID());
+        if (pending == null) return;
+        e.setCanceled(true); // never goes out to the server
+        String text = e.getRawText() == null ? "" : e.getRawText().trim();
+        p.server.execute(() -> {
+            if (text.equalsIgnoreCase("cancel")) {
+                Msg.send(p, "input.cancelled");
+                if (pending.onCancel() != null) pending.onCancel().accept(p);
+                return;
             }
-            return;
-        }
-        if (type == ClickType.QUICK_MOVE || type == ClickType.PICKUP_ALL) {
-            sendAllDataToRemote();
-            return;
-        }
-        super.clicked(slotId, button, type, player);
+            try {
+                pending.onSubmit().accept(p, text);
+            } catch (RuntimeException ex) {
+                ElementsClaims.LOGGER.error("[Claims] Text input handler failed.", ex);
+            }
+        });
     }
 
-    @Override
-    public void removed(Player player) {
-        inputSlots.clearContent(); // the paper is only a prop
-        resultSlots.clearContent();
-        super.removed(player);
-        if (!done && player instanceof ServerPlayer sp) {
-            done = true;
-            if (onCancel != null) onCancel.accept(sp);
-        }
+    @SubscribeEvent
+    public static void onLogout(PlayerEvent.PlayerLoggedOutEvent e) {
+        PENDING.remove(e.getEntity().getUUID());
+    }
+
+    @SubscribeEvent
+    public static void onTick(ServerTickEvent.Post e) {
+        if (PENDING.isEmpty() || ++timer < 20) return;
+        timer = 0;
+        long now = System.currentTimeMillis();
+        PENDING.entrySet().removeIf(en -> {
+            if (now < en.getValue().until()) return false;
+            ServerPlayer p = e.getServer().getPlayerList().getPlayer(en.getKey());
+            if (p != null) Msg.send(p, "input.timeout");
+            return true;
+        });
     }
 }

@@ -8,6 +8,8 @@ import com.tac5studios.elementsclaims.detect.Machines;
 import com.tac5studios.elementsclaims.importer.Imported;
 import com.tac5studios.elementsclaims.importer.Importers;
 import com.tac5studios.elementsclaims.claim.ClaimStore;
+import com.tac5studios.elementsclaims.config.ClaimsConfig;
+import com.tac5studios.elementsclaims.log.ActionLog;
 import com.tac5studios.elementsclaims.messages.Msg;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.network.chat.Component;
@@ -18,10 +20,45 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-/** /claims detected and /claims import. */
+/** /claims detected, /claims import and /claims log. */
 final class StaffCommands {
 
     private StaffCommands() {}
+
+    /** Log a staff command, with the player (or "Console") who ran it. */
+    static void logStaff(CommandSourceStack src, String action, String details) {
+        var p = src.getPlayer();
+        if (p != null) ActionLog.log(ActionLog.Category.STAFF, p, null, action, details);
+        else ActionLog.log(ActionLog.Category.STAFF, src.getTextName(), null, null, action, details);
+    }
+
+    private static final int PAGE = 10;
+
+    /** /claims log [page] and /claims log find <text> [page]: newest first. The files are read off the server thread. */
+    static int log(CommandContext<CommandSourceStack> ctx, String filter, int page) {
+        CommandSourceStack src = ctx.getSource();
+        var server = src.getServer();
+        int days = ClaimsConfig.logKeepDays;
+        java.util.concurrent.CompletableFuture.supplyAsync(() -> ActionLog.search(filter, days, page * PAGE + 1))
+                .thenAccept(lines -> server.execute(() -> {
+                    int from = (page - 1) * PAGE;
+                    if (lines.size() <= from) {
+                        Msg.send(src, filter == null ? "log.none" : "log.none_found", "text", filter == null ? "" : filter);
+                        return;
+                    }
+                    Msg.send(src, filter == null ? "log.header" : "log.header_find", "page", page, "text", filter == null ? "" : filter);
+                    for (int i = from; i < Math.min(lines.size(), from + PAGE); i++) {
+                        String l = lines.get(i);
+                        src.sendSuccess(() -> Component.literal(l).withStyle(net.minecraft.ChatFormatting.GRAY), false);
+                    }
+                    if (lines.size() > from + PAGE) {
+                        String next = filter == null ? "/claims log " + (page + 1)
+                                : "/claims log find \"" + filter.replace("\"", "") + "\" " + (page + 1);
+                        src.sendSuccess(() -> Msg.button("log.more", "log.more_hover", next), false);
+                    }
+                }));
+        return 1;
+    }
 
     static int detected(CommandContext<CommandSourceStack> ctx) {
         CommandSourceStack src = ctx.getSource();
@@ -54,6 +91,7 @@ final class StaffCommands {
         Machines.known().put(key, Machines.Mode.parse(mode));
         AutoSort.save();
         Msg.sendLogged(ctx.getSource(), "detect.set", "machine", key, "mode", Msg.raw("detect.mode_" + mode));
+        logStaff(ctx.getSource(), "detected machine set", key + " -> " + mode);
         return 1;
     }
 
@@ -73,7 +111,8 @@ final class StaffCommands {
         try {
             list = Importers.read(id, src.getServer(), notes);
         } catch (Exception ex) {
-            ElementsClaims.LOGGER.error("[Claims] Import from {} failed.", id, ex);
+            if (ex instanceof Importers.NoData) ElementsClaims.LOGGER.warn("[Claims] Import from {}: {}", id, ex.getMessage());
+            else ElementsClaims.LOGGER.error("[Claims] Import from {} failed.", id, ex);
             Msg.fail(src, "import.failed", "mod", id, "reason", String.valueOf(ex.getMessage()));
             return 0;
         }
@@ -88,6 +127,7 @@ final class StaffCommands {
         String backup = ClaimStore.backup("import-" + id);
         int made = Importers.apply(list);
         Msg.sendLogged(src, "import.done", "mod", id, "claims", made, "backup", backup == null ? "-" : backup);
+        logStaff(src, "import", id + ": " + made + " claims, backup " + (backup == null ? "-" : backup));
         return made;
     }
 }

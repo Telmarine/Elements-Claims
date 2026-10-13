@@ -91,4 +91,24 @@ public final class ClaimsAPI {
         Claim c = on() ? ClaimStore.at(level, pos) : null;
         return c != null && c.isTrusted(player);
     }
+
+    // ---------- action log ----------
+
+    /**
+     * Get every action Claims logs (claims made, players trusted, flags changed, bans, transfers...) as it happens,
+     * on the server thread. Only actions whose category is switched on in features.toml [log] are passed on.
+     */
+    public static void onAction(java.util.function.Consumer<com.tac5studios.elementsclaims.log.ActionLog.Entry> listener) {
+        com.tac5studios.elementsclaims.log.ActionLog.listen(listener);
+    }
+
+    /**
+     * Write your own line to the Claims action log, e.g. when your mod changes something in a claim.
+     * Goes under the "staff" category when {@code staffAction} is true, otherwise "settings".
+     */
+    public static void logAction(String actor, Level level, BlockPos pos, String action, String details, boolean staffAction) {
+        Claim c = on() ? ClaimStore.at(level, pos) : null;
+        com.tac5studios.elementsclaims.log.ActionLog.log(staffAction ? com.tac5studios.elementsclaims.log.ActionLog.Category.STAFF
+                : com.tac5studios.elementsclaims.log.ActionLog.Category.SETTINGS, actor, null, c, action, details);
+    }
 }

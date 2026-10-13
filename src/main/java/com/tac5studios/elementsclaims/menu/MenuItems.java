@@ -47,6 +47,7 @@ public final class MenuItems {
             case MANAGE_PLAYERS -> Items.PLAYER_HEAD;
             case MANAGE_LAND -> Items.FILLED_MAP;
             case SUB_AREAS -> Items.STICK;
+            case ADMIN_MODE -> Items.TRIAL_KEY;
         };
     }
 

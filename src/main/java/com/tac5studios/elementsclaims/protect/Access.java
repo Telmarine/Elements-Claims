@@ -44,15 +44,37 @@ public final class Access {
         if (c == null || !Features.flagOn(flag)) return true;
         if (player instanceof FakePlayer fake) return Machines.allowed(fake, c, pos, flag);
         if (!(player instanceof ServerPlayer sp)) return true;
-        return allowedFor(sp.getUUID(), c, pos, flag) || staff(sp, c);
+        if (allowedFor(sp.getUUID(), c, ClaimStore.dim(sp.level()), pos, flag)) return true;
+        if (!staff(sp, c)) return false;
+        logBypass(sp, c, flag);
+        return true;
+    }
+
+    private static final Map<String, Long> LAST_BYPASS_LOG = new HashMap<>();
+
+    /**
+     * Staff doing something in a player's claim that only their bypass allows. Logged once per player, claim and
+     * flag every 10 minutes so the log doesn't fill up with every block. Entering and flying aren't logged.
+     */
+    private static void logBypass(ServerPlayer sp, Claim c, RankFlag flag) {
+        if (c.isAdmin() || flag == RankFlag.ENTER || flag == RankFlag.FLIGHT) return;
+        if (!com.tac5studios.elementsclaims.log.ActionLog.enabled(com.tac5studios.elementsclaims.log.ActionLog.Category.STAFF)) return;
+        String key = sp.getUUID() + "|" + c.id() + "|" + flag.key();
+        long now = System.currentTimeMillis();
+        Long last = LAST_BYPASS_LOG.get(key);
+        if (last != null && now - last < 10 * 60_000L) return;
+        LAST_BYPASS_LOG.put(key, now);
+        if (LAST_BYPASS_LOG.size() > 2000) LAST_BYPASS_LOG.values().removeIf(t -> now - t > 10 * 60_000L);
+        com.tac5studios.elementsclaims.log.ActionLog.log(com.tac5studios.elementsclaims.log.ActionLog.Category.STAFF, sp, c,
+                "used staff bypass", flag.key() + " (logged once every 10 minutes per flag)");
     }
 
     /** The rank check alone, for any player id (also used for machines acting for their owner). */
-    public static boolean allowedFor(UUID id, Claim c, BlockPos pos, RankFlag flag) {
+    public static boolean allowedFor(UUID id, Claim c, String dim, BlockPos pos, RankFlag flag) {
         if (c.isOwner(id)) return true;
         if (c.isBanned(id)) return false;
         if (c.isAdmin() && c.blockEntry && flag == RankFlag.ENTER && !c.isTrusted(id)) return false;
-        SubArea area = pos == null || !Features.on(Features.SUB_AREAS) ? null : c.subAreaAt(pos);
+        SubArea area = pos == null || !Features.on(Features.SUB_AREAS) ? null : c.subAreaAt(dim, pos);
         boolean trusted = c.isTrusted(id) || (area != null && area.members().containsKey(id));
         if (c.isPrivate() && !trusted) return false;
         Rank r = c.rankOf(id, area);

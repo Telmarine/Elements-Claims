@@ -157,7 +157,7 @@ public final class LagLimits {
             out.add(level.getChunkAt(pos));
             return out;
         }
-        for (long l : c.chunks()) {
+        for (long l : c.chunks(ClaimStore.dim(level))) {
             LevelChunk ch = level.getChunkSource().getChunkNow(ChunkPos.getX(l), ChunkPos.getZ(l));
             if (ch != null) out.add(ch);
         }

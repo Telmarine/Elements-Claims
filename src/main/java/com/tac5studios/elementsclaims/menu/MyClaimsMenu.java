@@ -32,13 +32,28 @@ public final class MyClaimsMenu extends PagedMenu<Claim> {
     protected void drawEntry(Claim c, int slot) {
         ChunkPos mid = c.center();
         List<Component> lore = new ArrayList<>();
-        lore.add(Msg.menu("info.chunks_line", "chunks", c.chunks().size()));
+        lore.add(Msg.menu("info.chunks_line", "chunks", c.chunkCount()));
         lore.add(Msg.menu("info.where", "dimension", c.dimension(), "x", mid.getMiddleBlockX(), "z", mid.getMiddleBlockZ()));
         lore.add(Msg.menu("info.members_line", "members", c.members().size()));
         if (c.abandonedSince > 0) lore.add(Msg.menu("info.abandoned"));
+        Claim active = Claiming.activeProperty(viewer.getUUID());
+        boolean isActive = active == c;
+        lore.add(Msg.menu(isActive ? "my.active" : "my.make_active"));
         lore.add(Msg.menu("menu.player_click"));
-        set(slot, Button.of(Icons.named(Items.FILLED_MAP, Msg.menu("menu.info_name", "claim", c.name()), lore),
-                (p, click) -> LandConfigMenu.open(p, c)));
+        var icon = Icons.named(Items.FILLED_MAP, Msg.menu("menu.info_name", "claim", c.name()), lore);
+        if (isActive) icon.set(net.minecraft.core.component.DataComponents.ENCHANTMENT_GLINT_OVERRIDE, true);
+        set(slot, Button.of(icon, (p, click) -> {
+            if (click.isRight()) {
+                if (ClaimStore.byId(c.id()) == c && c.isOwner(p.getUUID())) {
+                    Claiming.setActive(p.getUUID(), c);
+                    Msg.send(p, "claim.now_active", "claim", c.name());
+                    com.tac5studios.elementsclaims.log.ActionLog.log(com.tac5studios.elementsclaims.log.ActionLog.Category.CLAIMING, p, c, "made active", c.name());
+                }
+                refresh();
+                return;
+            }
+            LandConfigMenu.open(p, c);
+        }));
     }
 
     @Override

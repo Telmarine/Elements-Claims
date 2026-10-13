@@ -69,9 +69,9 @@ public final class MapMarkers {
     }
 
     /** Rows of touching chunks merged into rectangles (block coordinates, inclusive start, exclusive end). */
-    private static List<Rect> rects(Claim c) {
+    private static List<Rect> rects(Claim c, String dim) {
         Map<Integer, List<Integer>> rows = new TreeMap<>();
-        for (long l : c.chunks()) rows.computeIfAbsent(ChunkPos.getZ(l), k -> new ArrayList<>()).add(ChunkPos.getX(l));
+        for (long l : c.chunks(dim)) rows.computeIfAbsent(ChunkPos.getZ(l), k -> new ArrayList<>()).add(ChunkPos.getX(l));
         List<Rect> out = new ArrayList<>();
         rows.forEach((z, xs) -> {
             xs.sort(Integer::compare);
@@ -128,7 +128,7 @@ public final class MapMarkers {
                 String dim = ClaimStore.dim(level);
                 int n = 0;
                 for (Claim c : ClaimStore.all()) {
-                    if (!c.dimension().equals(dim)) continue;
+                    if (!c.chunksByDim().containsKey(dim)) continue;
                     java.awt.Color col = new java.awt.Color(color(c));
                     Object ob = optsCls.getMethod("builder").invoke(null);
                     optsBuilderCls.getMethod("strokeColor", java.awt.Color.class).invoke(ob, col);
@@ -136,7 +136,7 @@ public final class MapMarkers {
                     optsBuilderCls.getMethod("fillOpacity", double.class).invoke(ob, 0.25);
                     optsBuilderCls.getMethod("hoverTooltip", String.class).invoke(ob, escape(label(c)));
                     Object opts = optsBuilderCls.getMethod("build").invoke(ob);
-                    for (Rect r : rects(c)) {
+                    for (Rect r : rects(c, dim)) {
                         Object p1 = pointCls.getMethod("of", double.class, double.class).invoke(null, (double) r.x1(), (double) r.z1());
                         Object p2 = pointCls.getMethod("of", double.class, double.class).invoke(null, (double) r.x2(), (double) r.z2());
                         Object marker = markerCls.getMethod("rectangle", pointCls, pointCls).invoke(null, p1, p2);
@@ -194,11 +194,11 @@ public final class MapMarkers {
                 String dim = ClaimStore.dim(level);
                 int n = 0;
                 for (Claim c : ClaimStore.all()) {
-                    if (!c.dimension().equals(dim)) continue;
+                    if (!c.chunksByDim().containsKey(dim)) continue;
                     int rgb = color(c);
                     Object line = colorNew.newInstance((rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255, 1f);
                     Object fill = colorNew.newInstance((rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255, 0.25f);
-                    for (Rect r : rects(c)) {
+                    for (Rect r : rects(c, dim)) {
                         Object shape = rect.invoke(null, (double) r.x1(), (double) r.z1(), (double) r.x2(), (double) r.z2());
                         Object marker = markerNew.newInstance(label(c), shape, (float) level.getSeaLevel());
                         setColors.invoke(marker, line, fill);

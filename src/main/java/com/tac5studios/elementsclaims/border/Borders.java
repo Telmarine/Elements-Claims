@@ -21,6 +21,7 @@ import net.minecraft.network.protocol.game.ClientboundSetEntityDataPacket;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Display;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.phys.Vec3;
@@ -38,8 +39,8 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Glowing claim outlines, sent only to the player holding the Deed.
- * Each edge is a thin block display entity with a coloured glow. The entities exist only on that
+ * Claim outlines, sent only to the player holding the Deed.
+ * Each edge is a thin, full-bright block display. No glow, so players and blocks in front hide it normally. The entities exist only on that
  * player's client (packets only), so they never touch the world, saves or other players.
  *
  * Colours: own green · trusted aqua · other players red · admin gold · preview (unclaimed chunk you stand in) white.
@@ -97,7 +98,7 @@ public final class Borders {
             for (int cz = here.z - r; cz <= here.z + r && s.ids.size() < ClaimsConfig.borderMaxSegments; cz++) {
                 Claim c = ClaimStore.at(dim, ChunkPos.asLong(cx, cz));
                 if (c == null) continue;
-                int color = colorFor(p, c);
+                Block color = blockFor(p, c);
                 double x0 = cx << 4, z0 = cz << 4;
                 if (ClaimStore.at(dim, ChunkPos.asLong(cx, cz - 1)) != c) bar(p, s, packets, x0, by, z0, 16, T, T, color);           // north
                 if (ClaimStore.at(dim, ChunkPos.asLong(cx, cz + 1)) != c) bar(p, s, packets, x0, by, z0 + 16 - T, 16, T, T, color);  // south
@@ -113,16 +114,16 @@ public final class Borders {
                 for (int cz = here.z - r; cz <= here.z + r; cz++) {
                     Claim c = ClaimStore.at(dim, ChunkPos.asLong(cx, cz));
                     if (c == null || !seen.add(c)) continue;
-                    for (SubArea a : c.subAreas()) box(p, s, packets, a.min(), a.max(), ClaimsConfig.colorSubArea);
+                    for (SubArea a : c.subAreas()) if (a.dimension().equals(dim)) box(p, s, packets, a.min(), a.max(), ClaimsConfig.blockSubArea);
                 }
             }
-            if (sel != null) box(p, s, packets, sel.first(), sel.first(), ClaimsConfig.colorPreview);
+            if (sel != null) box(p, s, packets, sel.first(), sel.first(), ClaimsConfig.blockPreview);
         }
 
         // White preview around the unclaimed chunk the player stands in.
         if (!stick && Features.on(Features.BORDERS_PREVIEW) && ClaimStore.at(dim, here) == null) {
             double x0 = here.getMinBlockX(), z0 = here.getMinBlockZ();
-            int color = ClaimsConfig.colorPreview;
+            Block color = ClaimsConfig.blockPreview;
             bar(p, s, packets, x0, by, z0, 16, T, T, color);
             bar(p, s, packets, x0, by, z0 + 16 - T, 16, T, T, color);
             bar(p, s, packets, x0, by, z0, T, T, 16, color);
@@ -137,7 +138,7 @@ public final class Borders {
 
     /** The 12 edges of a block box (inclusive corners). */
     private static void box(ServerPlayer p, Shown s, List<Packet<? super ClientGamePacketListener>> packets,
-                            net.minecraft.core.BlockPos a, net.minecraft.core.BlockPos b, int color) {
+                            net.minecraft.core.BlockPos a, net.minecraft.core.BlockPos b, Block color) {
         double x0 = a.getX(), y0 = a.getY(), z0 = a.getZ();
         float sx = b.getX() - a.getX() + 1, sy = b.getY() - a.getY() + 1, sz = b.getZ() - a.getZ() + 1;
         double x1 = x0 + sx - T, y1 = y0 + sy - T, z1 = z0 + sz - T;
@@ -153,22 +154,22 @@ public final class Borders {
         bar(p, s, packets, x1, y0, z1, T, sy, T, color);
     }
 
-    private static int colorFor(ServerPlayer p, Claim c) {
-        if (c.isAdmin()) return ClaimsConfig.colorAdmin;
-        if (c.isOwner(p.getUUID())) return ClaimsConfig.colorOwn;
-        if (c.isMember(p.getUUID())) return ClaimsConfig.colorTrusted;
-        return ClaimsConfig.colorOther;
+    private static Block blockFor(ServerPlayer p, Claim c) {
+        if (c.isAdmin()) return ClaimsConfig.blockAdmin;
+        if (c.isOwner(p.getUUID())) return ClaimsConfig.blockOwn;
+        if (c.isMember(p.getUUID())) return ClaimsConfig.blockTrusted;
+        return ClaimsConfig.blockOther;
     }
 
     /** One glowing bar: a block display at (x, y, z) scaled to (sx, sy, sz). */
     private static void bar(ServerPlayer p, Shown s, List<Packet<? super ClientGamePacketListener>> packets,
-                            double x, double y, double z, float sx, float sy, float sz, int color) {
+                            double x, double y, double z, float sx, float sy, float sz, Block block) {
         if (s.ids.size() >= ClaimsConfig.borderMaxSegments) return;
         Display.BlockDisplay d = EntityType.BLOCK_DISPLAY.create(p.level());
         if (d == null) return;
         CompoundTag tag = new CompoundTag();
         CompoundTag state = new CompoundTag();
-        state.putString("Name", BuiltInRegistries.BLOCK.getKey(ClaimsConfig.borderBlock).toString());
+        state.putString("Name", BuiltInRegistries.BLOCK.getKey(block).toString());
         tag.put("block_state", state);
         CompoundTag tf = new CompoundTag();
         tf.put("translation", floats(0, 0, 0));
@@ -180,10 +181,8 @@ public final class Borders {
         light.putInt("block", 15);
         light.putInt("sky", 15);
         tag.put("brightness", light);
-        tag.putInt("glow_color_override", color);
         tag.putFloat("view_range", 2.0f);
         d.load(tag);
-        d.setGlowingTag(true);
         d.setPos(x, y, z);
 
         packets.add(new ClientboundAddEntityPacket(d.getId(), d.getUUID(), x, y, z, 0f, 0f,

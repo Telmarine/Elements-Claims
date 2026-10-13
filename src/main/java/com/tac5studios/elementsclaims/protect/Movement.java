@@ -16,6 +16,7 @@ import net.minecraft.network.protocol.game.ClientboundSetTitlesAnimationPacket;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
@@ -61,12 +62,12 @@ public final class Movement {
         if (Features.on(Features.PROTECTION)) {
             if (c != null && !Access.can(p, c, pos, RankFlag.ENTER)) {
                 Access.deny(p, c, RankFlag.ENTER);
-                pushOut(p);
+                pushOutOf(p, c);
                 return;
             }
             // Admin claim with "block exit": walking out puts them back inside.
             if (last != null && last != c && last.isAdmin() && last.blockExit && Features.on(Features.ADMIN_BLOCK_ENTRY_EXIT)
-                    && !Access.staff(p, last) && last.dimension().equals(ClaimStore.dim(p.level()))) {
+                    && !Access.staff(p, last) && last.chunksByDim().containsKey(ClaimStore.dim(p.level()))) {
                 Msg.send(p, "admin.no_exit", "claim", last.name());
                 pushOut(p);
                 return;
@@ -129,6 +130,61 @@ public final class Movement {
                 ElementsClaims.LOGGER.warn("[Claims] Admin claim command failed: {} ({})", c, ex.toString());
             }
         }
+    }
+
+    /**
+     * Get a player out of a claim they can't be in. Uses their last allowed spot when that spot is outside the claim.
+     * If they were already inside when they got banned (or the claim went private), that spot is inside too, so the
+     * nearest safe spot in a chunk they may enter is used instead. World spawn is the last resort.
+     */
+    private static void pushOutOf(ServerPlayer p, Claim c) {
+        if (p.isPassenger()) p.stopRiding();
+        ServerLevel level = (ServerLevel) p.level();
+        Spot s = LAST_ALLOWED.get(p.getUUID());
+        if (s != null && s.dim().equals(level.dimension())) {
+            BlockPos at = BlockPos.containing(s.pos());
+            Claim there = ClaimStore.at(level, at);
+            if (there != c && (there == null || Access.can(p, there, at, RankFlag.ENTER))) {
+                p.teleportTo(level, s.pos().x, s.pos().y, s.pos().z, s.yRot(), s.xRot());
+                return;
+            }
+        }
+        String dim = ClaimStore.dim(level);
+        ChunkPos here = p.chunkPosition();
+        for (int r = 1; r <= 16; r++) {
+            for (int dx = -r; dx <= r; dx++) {
+                for (int dz = -r; dz <= r; dz++) {
+                    if (Math.abs(dx) != r && Math.abs(dz) != r) continue; // only the ring at distance r
+                    ChunkPos cp = new ChunkPos(here.x + dx, here.z + dz);
+                    Claim there = ClaimStore.at(dim, cp);
+                    BlockPos safe = safeSpot(level, cp.getMiddleBlockX(), cp.getMiddleBlockZ(), p.getBlockY());
+                    if (safe == null) continue;
+                    if (there != null && (there == c || !Access.can(p, there, safe, RankFlag.ENTER))) continue;
+                    LAST_ALLOWED.remove(p.getUUID());
+                    p.teleportTo(level, safe.getX() + 0.5, safe.getY(), safe.getZ() + 0.5, p.getYRot(), p.getXRot());
+                    return;
+                }
+            }
+        }
+        LAST_ALLOWED.remove(p.getUUID());
+        pushOut(p);
+    }
+
+    /** A spot near this height with solid ground and two blocks of room, or null. */
+    private static BlockPos safeSpot(ServerLevel level, int x, int z, int nearY) {
+        for (int d = 0; d <= 32; d++) {
+            for (int y : new int[]{nearY + d, nearY - d}) {
+                if (y <= level.getMinBuildHeight() || y + 1 >= level.getMaxBuildHeight()) continue;
+                BlockPos feet = new BlockPos(x, y, z);
+                if (level.getBlockState(feet.below()).isFaceSturdy(level, feet.below(), net.minecraft.core.Direction.UP)
+                        && level.getBlockState(feet).getCollisionShape(level, feet).isEmpty()
+                        && level.getBlockState(feet.above()).getCollisionShape(level, feet.above()).isEmpty()
+                        && level.getFluidState(feet).isEmpty()) {
+                    return feet;
+                }
+            }
+        }
+        return null;
     }
 
     private static void pushOut(ServerPlayer p) {

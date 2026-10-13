@@ -12,7 +12,7 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * One claim: a group of chunks in one dimension with one owner, its ranks, members and flags.
+ * One claim (property): chunks in any dimension with one owner, its ranks, members and flags.
  * Ranks are kept in order: Owner first, Visitor last. Change claims only through {@link ClaimStore}
  * (it keeps the chunk index and saves).
  */
@@ -23,7 +23,8 @@ public final class Claim {
     private final boolean admin;
     private String name;
     private final String dimension;
-    private final Set<Long> chunks = new HashSet<>();
+    /** dimension -> chunks (ChunkPos.toLong). A property can have chunks in the Overworld, Nether and End. */
+    private final Map<String, Set<Long>> chunks = new LinkedHashMap<>();
     private final List<Rank> ranks = new ArrayList<>();
     private final Map<UUID, String> members = new LinkedHashMap<>(); // player -> rank id
     private final Set<UUID> bans = new HashSet<>();
@@ -32,11 +33,8 @@ public final class Claim {
     private final long created;
     private final java.util.List<SubArea> subAreas = new java.util.ArrayList<>();
 
-    // Selling and expiry
-    public long salePrice = -1;
+    // Expiry
     public long abandonedSince;
-    /** Grace period over: the chunks no longer count for the owner and the claim is for sale (selling on). */
-    public boolean forfeited;
 
     // Admin claim extras
     public boolean keepInventory, noHunger, blockEntry, blockExit;
@@ -84,8 +82,8 @@ public final class Claim {
         return subAreas;
     }
 
-    public SubArea subAreaAt(net.minecraft.core.BlockPos pos) {
-        for (SubArea a : subAreas) if (a.contains(pos)) return a;
+    public SubArea subAreaAt(String dim, net.minecraft.core.BlockPos pos) {
+        for (SubArea a : subAreas) if (a.dimension().equals(dim) && a.contains(pos)) return a;
         return null;
     }
 
@@ -132,22 +130,39 @@ public final class Claim {
 
     // ---------- chunks ----------
 
-    public Set<Long> chunks() {
+    /** Chunks in one dimension (an empty set is created when there are none yet). */
+    public Set<Long> chunks(String dim) {
+        return chunks.computeIfAbsent(dim, k -> new HashSet<>());
+    }
+
+    /** Every dimension that has chunks of this claim, with its chunks. */
+    public Map<String, Set<Long>> chunksByDim() {
+        chunks.values().removeIf(Set::isEmpty);
         return chunks;
     }
 
-    public boolean has(ChunkPos pos) {
-        return chunks.contains(pos.toLong());
+    /** Chunks in all dimensions together: what counts against the owner's allowance. */
+    public int chunkCount() {
+        int n = 0;
+        for (Set<Long> s : chunks.values()) n += s.size();
+        return n;
     }
 
-    /** Middle chunk-ish of the claim, for lists ("near x, z"). */
+    public boolean has(String dim, long chunk) {
+        Set<Long> s = chunks.get(dim);
+        return s != null && s.contains(chunk);
+    }
+
+    /** Middle chunk-ish of the claim in its first dimension, for lists ("near x, z"). */
     public ChunkPos center() {
+        Set<Long> home = chunks.get(dimension);
+        if (home == null || home.isEmpty()) home = chunksByDim().values().stream().findFirst().orElse(Set.of());
         long sx = 0, sz = 0;
-        for (long l : chunks) {
+        for (long l : home) {
             sx += ChunkPos.getX(l);
             sz += ChunkPos.getZ(l);
         }
-        int n = Math.max(1, chunks.size());
+        int n = Math.max(1, home.size());
         return new ChunkPos((int) (sx / n), (int) (sz / n));
     }
 
@@ -234,14 +249,4 @@ public final class Claim {
         return landFlags;
     }
 
-    /** Used by ClaimStore when merging two claims of the same owner: this claim takes over the other's chunks and people. */
-    void absorb(Claim other) {
-        chunks.addAll(other.chunks);
-        other.members.forEach((uuid, rankId) -> {
-            if (members.containsKey(uuid) || isOwner(uuid)) return;
-            members.put(uuid, rank(rankId) != null ? rankId : lowestTrusted().id());
-        });
-        bans.addAll(other.bans);
-        bans.removeAll(members.keySet());
-    }
 }

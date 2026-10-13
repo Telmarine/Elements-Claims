@@ -9,7 +9,7 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * A block-precise box inside a claim (SPEC 9, sub-areas): shop plots, rented rooms, farms with their own rules.
+ * A block-precise box inside a claim (SPEC 9, sub-areas): shop plots, rooms, farms with their own rules.
  * Inside it a player's rank comes from the sub-area's own members first, then the claim.
  * Visitor flags, when set, replace the claim's Visitor flags inside the box.
  */
@@ -17,23 +17,23 @@ public final class SubArea {
 
     private final UUID id;
     private String name;
+    /** The dimension the box is in (a property can have chunks in several). */
+    private final String dimension;
     private int minX, minY, minZ, maxX, maxY, maxZ;
     private final Map<UUID, String> members = new LinkedHashMap<>();
     private EnumSet<RankFlag> visitorFlags; // null = same as the claim's Visitor rank
+    /** Blocks placed here by players other than the owner: BlockPos.asLong() -> who placed it. */
+    public final Map<Long, UUID> placed = new java.util.HashMap<>();
+    /** Players the owner is removing who still had blocks here: player -> time their removal goes through. */
+    public final Map<UUID, Long> leaving = new LinkedHashMap<>();
+    /** The sub-area's manager: a trusted player the owner picked to add, remove and rank players here while they're away. */
+    public UUID manager;
 
-    // Selling and renting
-    public long salePrice = -1;
-    public boolean rentable;
-    public long rentPrice;
-    public int rentDays = 7;
-    public String rentRank = Rank.MEMBER;
-    public UUID renter;
-    public long rentUntil;
-    public boolean rentReturnItems = true;
 
-    public SubArea(UUID id, String name, BlockPos a, BlockPos b) {
+    public SubArea(UUID id, String name, String dimension, BlockPos a, BlockPos b) {
         this.id = id;
         this.name = name;
+        this.dimension = dimension;
         setBox(a, b);
     }
 
@@ -56,6 +56,10 @@ public final class SubArea {
         maxX = Math.max(a.getX(), b.getX());
         maxY = Math.max(a.getY(), b.getY());
         maxZ = Math.max(a.getZ(), b.getZ());
+    }
+
+    public String dimension() {
+        return dimension;
     }
 
     public boolean contains(BlockPos p) {

@@ -7,6 +7,10 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.tac5studios.elementsclaims.ElementsClaims;
+import com.tac5studios.elementsclaims.config.ClaimsConfig;
+import com.tac5studios.elementsclaims.config.Features;
+import com.tac5studios.elementsclaims.log.ActionLog;
+import com.tac5studios.elementsclaims.util.Alerts;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.MinecraftServer;
@@ -27,9 +31,12 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -64,6 +71,11 @@ public final class ClaimStore {
 
     private static Path file;
     private static boolean dirty;
+    /** True when claims.json and every backup failed to load: nothing gets saved until staff fix it. */
+    private static boolean saveBlocked;
+    private static long lastHourly, lastDaily;
+    private static final long HOUR = 60L * 60 * 1000;
+    private static final DateTimeFormatter STAMP = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm");
     private static int saveTimer;
     /** Goes up on every change, so outlines know when to redraw. */
     private static int version;
@@ -165,7 +177,7 @@ public final class ClaimStore {
     /** Chunks this player has claimed — the Deed's counter. */
     public static int chunksUsed(UUID player) {
         int n = 0;
-        for (Claim c : CLAIMS.values()) if (!c.isAdmin() && !c.forfeited && c.isOwner(player)) n += c.chunks().size();
+        for (Claim c : CLAIMS.values()) if (!c.isAdmin() && c.isOwner(player)) n += c.chunkCount();
         return n;
     }
 
@@ -180,15 +192,40 @@ public final class ClaimStore {
     /** Move every chunk of a claim to the index (used after changing a claim's owner or importing). */
     public static void add(Claim c) {
         CLAIMS.put(c.id(), c);
-        for (long l : c.chunks()) index(c.dimension()).put(l, c);
+        c.chunksByDim().forEach((dim, set) -> {
+            for (long l : set) index(dim).put(l, c);
+        });
         markDirty();
     }
 
     /** Delete a whole claim. */
     public static void delete(Claim c) {
         CLAIMS.remove(c.id());
-        Long2ObjectOpenHashMap<Claim> m = INDEX.get(c.dimension());
-        if (m != null) for (long l : c.chunks()) if (m.get(l) == c) m.remove(l);
+        c.chunksByDim().forEach((dim, set) -> {
+            Long2ObjectOpenHashMap<Claim> m = INDEX.get(dim);
+            if (m != null) for (long l : set) if (m.get(l) == c) m.remove(l);
+        });
+        markDirty();
+    }
+
+    /**
+     * Move every chunk (in every dimension) and sub-area of one claim into another claim, then delete the first one.
+     * Only used when a player accepts a claim transfer and chooses to add it to their current property.
+     * The moved claim's own members, bans, ranks and land flags are dropped: the receiving property's rules apply.
+     */
+    public static void moveInto(Claim from, Claim into) {
+        Map<String, List<Long>> moved = new LinkedHashMap<>();
+        from.chunksByDim().forEach((dim, set) -> moved.put(dim, new ArrayList<>(set)));
+        List<SubArea> areas = new ArrayList<>(from.subAreas());
+        delete(from);
+        moved.forEach((dim, list) -> {
+            for (long l : list) {
+                into.chunks(dim).add(l);
+                index(dim).put(l, into);
+            }
+        });
+        into.subAreas().addAll(areas);
+        Manage.fixMissingRanks(into);
         markDirty();
     }
 
@@ -203,48 +240,39 @@ public final class ClaimStore {
     // ---------- changes ----------
 
     /**
-     * Add a chunk for this owner. Joins a touching claim of the same owner (and merges claims it connects)
-     * when merging is on; otherwise starts a new claim. The caller has already checked allowance and rules.
+     * Add a chunk. With a target it joins that claim; with null it starts a new claim. Claims are never merged:
+     * a chunk joins exactly one claim even when it touches several. The caller has already checked the rules.
      */
-    public static Claim addChunk(UUID owner, boolean admin, String dimension, ChunkPos pos, String newName, boolean merge) {
-        Set<Claim> touching = new HashSet<>();
-        if (merge) {
-            for (ChunkPos n : new ChunkPos[]{
-                    new ChunkPos(pos.x + 1, pos.z), new ChunkPos(pos.x - 1, pos.z),
-                    new ChunkPos(pos.x, pos.z + 1), new ChunkPos(pos.x, pos.z - 1)}) {
-                Claim c = at(dimension, n);
-                if (c != null && c.isAdmin() == admin && (admin || c.isOwner(owner))) touching.add(c);
-            }
-        }
-        Claim target;
-        if (touching.isEmpty()) {
+    public static Claim addChunk(Claim target, UUID owner, boolean admin, String dimension, ChunkPos pos, String newName) {
+        if (target == null) {
             target = Claim.create(owner, admin, newName, dimension);
             CLAIMS.put(target.id(), target);
-        } else {
-            // Keep the oldest claim; the others merge into it.
-            List<Claim> sorted = new ArrayList<>(touching);
-            sorted.sort((a, b) -> Long.compare(a.created(), b.created()));
-            target = sorted.get(0);
-            for (int i = 1; i < sorted.size(); i++) {
-                Claim other = sorted.get(i);
-                target.absorb(other);
-                CLAIMS.remove(other.id());
-                for (long l : other.chunks()) index(dimension).put(l, target);
-            }
         }
-        target.chunks().add(pos.toLong());
+        target.chunks(dimension).add(pos.toLong());
         index(dimension).put(pos.toLong(), target);
         markDirty();
         return target;
+    }
+
+    /** Claims next to this chunk (north, south, west, east) that pass the test. */
+    public static List<Claim> touching(String dimension, ChunkPos pos, java.util.function.Predicate<Claim> test) {
+        List<Claim> out = new ArrayList<>();
+        for (ChunkPos n : new ChunkPos[]{
+                new ChunkPos(pos.x + 1, pos.z), new ChunkPos(pos.x - 1, pos.z),
+                new ChunkPos(pos.x, pos.z + 1), new ChunkPos(pos.x, pos.z - 1)}) {
+            Claim c = at(dimension, n);
+            if (c != null && test.test(c) && !out.contains(c)) out.add(c);
+        }
+        return out;
     }
 
     /** Remove one chunk. A claim with no chunks left is deleted. Returns the claim it was in, or null. */
     public static Claim removeChunk(String dimension, ChunkPos pos) {
         Claim c = at(dimension, pos);
         if (c == null) return null;
-        c.chunks().remove(pos.toLong());
+        c.chunks(dimension).remove(pos.toLong());
         index(dimension).remove(pos.toLong());
-        if (c.chunks().isEmpty()) CLAIMS.remove(c.id());
+        if (c.chunkCount() == 0) CLAIMS.remove(c.id());
         markDirty();
         return c;
     }
@@ -256,67 +284,170 @@ public final class ClaimStore {
     // ---------- saving ----------
 
     private static void load() {
+        clearAll();
+        saveBlocked = false;
+        lastHourly = lastDaily = 0;
+        if (file == null) return;
+        scanBackups();
+        if (!Files.exists(file)) {
+            ElementsClaims.LOGGER.info("[Claims] No claims yet ({}).", file);
+            return;
+        }
+        try {
+            readFrom(file);
+            ElementsClaims.LOGGER.info("[Claims] Loaded {} claims.", CLAIMS.size());
+            return;
+        } catch (Exception ex) {
+            ElementsClaims.LOGGER.error("[Claims] Could not read {}.", file, ex);
+        }
+
+        // claims.json is broken. Keep it for staff, then try the backups, newest first.
+        String kept = "claims.json.broken-" + STAMP.format(LocalDateTime.now());
+        try {
+            Files.copy(file, file.resolveSibling(kept), StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException ignored) {
+        }
+        for (Path b : backupsNewestFirst()) {
+            clearAll();
+            try {
+                readFrom(b);
+                dirty = true; // write the restored claims back to claims.json
+                ElementsClaims.LOGGER.info("[Claims] Loaded {} claims from backup {}.", CLAIMS.size(), b.getFileName());
+                ActionLog.log(ActionLog.Category.SYSTEM, "Server", null, null, "restored from backup", b.getFileName() + ", broken file kept as " + kept);
+                Alerts.staff("claims.json could not be read, so claims were restored from backup " + b.getFileName()
+                        + ". Anything changed after that backup is missing. The broken file was kept as " + kept + ".");
+                return;
+            } catch (Exception ex) {
+                ElementsClaims.LOGGER.error("[Claims] Backup {} could not be read either.", b.getFileName());
+            }
+        }
+        clearAll();
+        saveBlocked = true;
+        Alerts.staff("claims.json could not be read and no backup worked. Saving is paused so nothing gets overwritten."
+                + " Fix " + file.getFileName() + " (a copy is kept as " + kept + ") and restart the server.");
+    }
+
+    private static void clearAll() {
         CLAIMS.clear();
         INDEX.clear();
         DEED_GIVEN.clear();
         PLAYERS.clear();
         dirty = false;
-        if (file == null || !Files.exists(file)) {
-            ElementsClaims.LOGGER.info("[Claims] No claims yet ({}).", file);
-            return;
+    }
+
+    /** Read a claims file into the store. Throws when the file, or any claim in it, can't be read. */
+    private static void readFrom(Path path) throws IOException {
+        JsonObject root = JsonParser.parseString(Files.readString(path, StandardCharsets.UTF_8)).getAsJsonObject();
+        if (root.has("deed_given")) for (JsonElement e : root.getAsJsonArray("deed_given")) DEED_GIVEN.add(UUID.fromString(e.getAsString()));
+        if (root.has("players")) {
+            for (Map.Entry<String, JsonElement> pe : root.getAsJsonObject("players").entrySet()) {
+                JsonObject po = pe.getValue().getAsJsonObject();
+                PlayerData d = new PlayerData();
+                if (po.has("titles")) d.titles = po.get("titles").getAsBoolean();
+                if (po.has("trust_messages")) d.trustMessages = po.get("trust_messages").getAsBoolean();
+                if (po.has("last_seen")) d.lastSeen = po.get("last_seen").getAsLong();
+                if (po.has("name")) d.lastName = po.get("name").getAsString();
+                if (po.has("active")) d.activeProperty = UUID.fromString(po.get("active").getAsString());
+                if (po.has("pending_items")) {
+                    for (JsonElement ie : po.getAsJsonArray("pending_items")) {
+                        ItemStack st = itemFromJson(ie.getAsString());
+                        if (!st.isEmpty()) d.pendingItems.add(st);
+                    }
+                }
+                PLAYERS.put(UUID.fromString(pe.getKey()), d);
+            }
         }
-        try {
-            JsonObject root = JsonParser.parseString(Files.readString(file, StandardCharsets.UTF_8)).getAsJsonObject();
-            if (root.has("deed_given")) for (JsonElement e : root.getAsJsonArray("deed_given")) DEED_GIVEN.add(UUID.fromString(e.getAsString()));
-            if (root.has("players")) {
-                for (Map.Entry<String, JsonElement> pe : root.getAsJsonObject("players").entrySet()) {
-                    JsonObject po = pe.getValue().getAsJsonObject();
-                    PlayerData d = new PlayerData();
-                    if (po.has("titles")) d.titles = po.get("titles").getAsBoolean();
-                    if (po.has("trust_messages")) d.trustMessages = po.get("trust_messages").getAsBoolean();
-                    if (po.has("last_seen")) d.lastSeen = po.get("last_seen").getAsLong();
-                    if (po.has("name")) d.lastName = po.get("name").getAsString();
-                    if (po.has("pending_items")) {
-                        for (JsonElement ie : po.getAsJsonArray("pending_items")) {
-                            ItemStack st = itemFromJson(ie.getAsString());
-                            if (!st.isEmpty()) d.pendingItems.add(st);
-                        }
+        // One unreadable claim counts as a broken file: loading the rest and saving would delete that claim for good.
+        for (JsonElement e : root.getAsJsonArray("claims")) {
+            Claim c = read(e.getAsJsonObject());
+            CLAIMS.put(c.id(), c);
+            c.chunksByDim().forEach((dim, set) -> {
+                for (long l : set) {
+                    Claim before = index(dim).put(l, c);
+                    if (before != null && before != c) {
+                        ElementsClaims.LOGGER.warn("[Claims] Chunk {} in {} was in two claims; kept {}.",
+                                new ChunkPos(l), dim, c.name());
                     }
-                    PLAYERS.put(UUID.fromString(pe.getKey()), d);
                 }
-            }
-            int bad = 0;
-            for (JsonElement e : root.getAsJsonArray("claims")) {
-                try {
-                    Claim c = read(e.getAsJsonObject());
-                    CLAIMS.put(c.id(), c);
-                    for (long l : c.chunks()) {
-                        Claim before = index(c.dimension()).put(l, c);
-                        if (before != null && before != c) {
-                            ElementsClaims.LOGGER.warn("[Claims] Chunk {} in {} was in two claims; kept {}.",
-                                    new ChunkPos(l), c.dimension(), c.name());
-                        }
-                    }
-                } catch (RuntimeException ex) {
-                    bad++;
-                    ElementsClaims.LOGGER.error("[Claims] Skipped a claim that could not be read: {}", ex.toString());
-                }
-            }
-            int fixed = 0;
-            for (Claim c : CLAIMS.values()) if (Manage.fixMissingRanks(c)) fixed++;
-            if (fixed > 0) {
-                ElementsClaims.LOGGER.info("[Claims] Fixed ranks that no longer exist in {} claims.", fixed);
-                dirty = true;
-            }
-            ElementsClaims.LOGGER.info("[Claims] Loaded {} claims{}.", CLAIMS.size(), bad > 0 ? " (" + bad + " skipped)" : "");
-        } catch (Exception ex) {
-            // Never start with an empty store over a file we couldn't read: keep a copy before anything is saved.
-            ElementsClaims.LOGGER.error("[Claims] Could not read {}. A copy is kept as claims.json.broken.", file, ex);
+            });
+        }
+        int fixed = 0;
+        for (Claim c : CLAIMS.values()) if (Manage.fixMissingRanks(c)) fixed++;
+        if (fixed > 0) {
+            ElementsClaims.LOGGER.info("[Claims] Fixed ranks that no longer exist in {} claims.", fixed);
+            dirty = true;
+        }
+    }
+
+    // ---------- backups ----------
+
+    private static Path backupDir() {
+        return file.resolveSibling("backups");
+    }
+
+    private static List<Path> backups(String prefix) {
+        List<Path> out = new ArrayList<>();
+        Path dir = backupDir();
+        if (!Files.isDirectory(dir)) return out;
+        try (var stream = Files.list(dir)) {
+            stream.filter(f -> f.getFileName().toString().startsWith(prefix) && f.getFileName().toString().endsWith(".json"))
+                    .forEach(out::add);
+        } catch (IOException ignored) {
+        }
+        out.sort(Comparator.comparing((Path f) -> f.getFileName().toString()).reversed()); // names hold the date: newest first
+        return out;
+    }
+
+    private static List<Path> backupsNewestFirst() {
+        List<Path> all = new ArrayList<>(backups("hourly-"));
+        all.addAll(backups("daily-"));
+        all.sort(Comparator.comparing((Path f) -> {
             try {
-                Files.copy(file, file.resolveSibling("claims.json.broken"), StandardCopyOption.REPLACE_EXISTING);
+                return Files.getLastModifiedTime(f).toMillis();
+            } catch (IOException ex) {
+                return 0L;
+            }
+        }).reversed());
+        return all;
+    }
+
+    /** Pick up when the last backups were made, so a restart doesn't make extra ones. */
+    private static void scanBackups() {
+        for (String prefix : new String[]{"hourly-", "daily-"}) {
+            List<Path> list = backups(prefix);
+            if (list.isEmpty()) continue;
+            try {
+                long t = Files.getLastModifiedTime(list.get(0)).toMillis();
+                if (prefix.equals("hourly-")) lastHourly = t;
+                else lastDaily = t;
             } catch (IOException ignored) {
             }
         }
+    }
+
+    /** After a good save: copy claims.json to backups/ once an hour and once a day (how many are kept: claims.toml [backups]). */
+    private static void backupAfterSave() {
+        if (!Features.on(Features.BACKUPS)) return;
+        long now = System.currentTimeMillis();
+        try {
+            if (Features.on(Features.BACKUPS_HOURLY) && now - lastHourly >= HOUR) {
+                copyBackup("hourly-", ClaimsConfig.backupsKeepHourly);
+                lastHourly = now;
+            }
+            if (Features.on(Features.BACKUPS_DAILY) && now - lastDaily >= 24 * HOUR) {
+                copyBackup("daily-", ClaimsConfig.backupsKeepDaily);
+                lastDaily = now;
+            }
+        } catch (IOException ex) {
+            ElementsClaims.LOGGER.warn("[Claims] Could not write a backup of claims.json: {}", ex.toString());
+        }
+    }
+
+    private static void copyBackup(String prefix, int keep) throws IOException {
+        Files.createDirectories(backupDir());
+        Files.copy(file, backupDir().resolve(prefix + STAMP.format(LocalDateTime.now()) + ".json"), StandardCopyOption.REPLACE_EXISTING);
+        List<Path> list = backups(prefix);
+        for (int k = keep; k < list.size(); k++) Files.deleteIfExists(list.get(k));
     }
 
     /** Write a copy of all claims next to claims.json (before an import). Returns the file name, or null. */
@@ -341,11 +472,16 @@ public final class ClaimStore {
     }
 
     private static synchronized void write(String json) {
+        if (saveBlocked) {
+            ElementsClaims.LOGGER.error("[Claims] Not saving: claims.json couldn't be loaded and saving is paused.");
+            return;
+        }
         try {
             Files.createDirectories(file.getParent());
             Path tmp = file.resolveSibling("claims.json.tmp");
             Files.writeString(tmp, json, StandardCharsets.UTF_8);
             Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            backupAfterSave();
         } catch (IOException ex) {
             ElementsClaims.LOGGER.error("[Claims] Could not save {}.", file, ex);
             dirty = true;
@@ -365,6 +501,7 @@ public final class ClaimStore {
             po.addProperty("trust_messages", d.trustMessages);
             po.addProperty("last_seen", d.lastSeen);
             if (d.lastName != null) po.addProperty("name", d.lastName);
+            if (d.activeProperty != null) po.addProperty("active", d.activeProperty.toString());
             if (!d.pendingItems.isEmpty()) {
                 JsonArray items = new JsonArray();
                 for (ItemStack st : d.pendingItems) {
@@ -410,14 +547,19 @@ public final class ClaimStore {
         o.addProperty("dimension", c.dimension());
         o.addProperty("created", c.created());
         o.addProperty("private", c.isPrivate());
-        JsonArray chunks = new JsonArray();
-        for (long l : c.chunks()) {
-            JsonArray xz = new JsonArray();
-            xz.add(ChunkPos.getX(l));
-            xz.add(ChunkPos.getZ(l));
-            chunks.add(xz);
-        }
-        o.add("chunks", chunks);
+        // chunks per dimension: {"minecraft:overworld": [[x, z], ...], "minecraft:the_nether": [...]}
+        JsonObject byDim = new JsonObject();
+        c.chunksByDim().forEach((dim, set) -> {
+            JsonArray chunks = new JsonArray();
+            for (long l : set) {
+                JsonArray xz = new JsonArray();
+                xz.add(ChunkPos.getX(l));
+                xz.add(ChunkPos.getZ(l));
+                chunks.add(xz);
+            }
+            byDim.add(dim, chunks);
+        });
+        o.add("chunks_by_dim", byDim);
         JsonArray ranks = new JsonArray();
         for (Rank r : c.ranks()) {
             JsonObject ro = new JsonObject();
@@ -438,9 +580,7 @@ public final class ClaimStore {
         JsonObject flags = new JsonObject();
         c.landFlags().forEach((f, v) -> flags.addProperty(f.key(), v));
         o.add("land_flags", flags);
-        if (c.salePrice >= 0) o.addProperty("sale_price", c.salePrice);
         if (c.abandonedSince > 0) o.addProperty("abandoned_since", c.abandonedSince);
-        if (c.forfeited) o.addProperty("forfeited", true);
         if (c.isAdmin()) {
             JsonObject a = new JsonObject();
             a.addProperty("keep_inventory", c.keepInventory);
@@ -469,6 +609,7 @@ public final class ClaimStore {
         JsonObject o = new JsonObject();
         o.addProperty("id", s.id().toString());
         o.addProperty("name", s.name());
+        o.addProperty("dimension", s.dimension());
         JsonArray box = new JsonArray();
         BlockPos a = s.min(), b = s.max();
         for (int v : new int[]{a.getX(), a.getY(), a.getZ(), b.getX(), b.getY(), b.getZ()}) box.add(v);
@@ -481,25 +622,24 @@ public final class ClaimStore {
             for (RankFlag f : s.visitorFlags()) fl.add(f.key());
             o.add("visitor_flags", fl);
         }
-        if (s.salePrice >= 0) o.addProperty("sale_price", s.salePrice);
-        if (s.rentable) {
-            JsonObject r = new JsonObject();
-            r.addProperty("price", s.rentPrice);
-            r.addProperty("days", s.rentDays);
-            r.addProperty("rank", s.rentRank);
-            r.addProperty("return_items", s.rentReturnItems);
-            if (s.renter != null) {
-                r.addProperty("renter", s.renter.toString());
-                r.addProperty("until", s.rentUntil);
-            }
-            o.add("rent", r);
+        if (!s.placed.isEmpty()) {
+            JsonObject pl = new JsonObject();
+            s.placed.forEach((pos, who) -> pl.addProperty(Long.toString(pos), who.toString()));
+            o.add("placed", pl);
+        }
+        if (s.manager != null) o.addProperty("manager", s.manager.toString());
+        if (!s.leaving.isEmpty()) {
+            JsonObject lv = new JsonObject();
+            s.leaving.forEach((who, until) -> lv.addProperty(who.toString(), until));
+            o.add("leaving", lv);
         }
         return o;
     }
 
-    private static SubArea readSub(JsonObject o) {
+    private static SubArea readSub(JsonObject o, String claimDim) {
         JsonArray b = o.getAsJsonArray("box");
         SubArea s = new SubArea(UUID.fromString(o.get("id").getAsString()), o.get("name").getAsString(),
+                o.has("dimension") ? o.get("dimension").getAsString() : claimDim,
                 new BlockPos(b.get(0).getAsInt(), b.get(1).getAsInt(), b.get(2).getAsInt()),
                 new BlockPos(b.get(3).getAsInt(), b.get(4).getAsInt(), b.get(5).getAsInt()));
         if (o.has("members")) for (Map.Entry<String, JsonElement> m : o.getAsJsonObject("members").entrySet())
@@ -512,17 +652,15 @@ public final class ClaimStore {
             }
             s.setVisitorFlags(fl);
         }
-        if (o.has("sale_price")) s.salePrice = o.get("sale_price").getAsLong();
-        if (o.has("rent")) {
-            JsonObject r = o.getAsJsonObject("rent");
-            s.rentable = true;
-            s.rentPrice = r.get("price").getAsLong();
-            s.rentDays = r.get("days").getAsInt();
-            s.rentRank = r.get("rank").getAsString();
-            s.rentReturnItems = !r.has("return_items") || r.get("return_items").getAsBoolean();
-            if (r.has("renter")) {
-                s.renter = UUID.fromString(r.get("renter").getAsString());
-                s.rentUntil = r.get("until").getAsLong();
+        if (o.has("placed")) {
+            for (Map.Entry<String, JsonElement> en : o.getAsJsonObject("placed").entrySet()) {
+                s.placed.put(Long.parseLong(en.getKey()), UUID.fromString(en.getValue().getAsString()));
+            }
+        }
+        if (o.has("manager")) s.manager = UUID.fromString(o.get("manager").getAsString());
+        if (o.has("leaving")) {
+            for (Map.Entry<String, JsonElement> en : o.getAsJsonObject("leaving").entrySet()) {
+                s.leaving.put(UUID.fromString(en.getKey()), en.getValue().getAsLong());
             }
         }
         return s;
@@ -536,9 +674,19 @@ public final class ClaimStore {
                 o.get("name").getAsString(), o.get("dimension").getAsString(),
                 o.has("created") ? o.get("created").getAsLong() : System.currentTimeMillis());
         c.setPrivate(o.has("private") && o.get("private").getAsBoolean());
-        for (JsonElement e : o.getAsJsonArray("chunks")) {
-            JsonArray xz = e.getAsJsonArray();
-            c.chunks().add(ChunkPos.asLong(xz.get(0).getAsInt(), xz.get(1).getAsInt()));
+        if (o.has("chunks_by_dim")) {
+            for (Map.Entry<String, JsonElement> d : o.getAsJsonObject("chunks_by_dim").entrySet()) {
+                for (JsonElement e : d.getValue().getAsJsonArray()) {
+                    JsonArray xz = e.getAsJsonArray();
+                    c.chunks(d.getKey()).add(ChunkPos.asLong(xz.get(0).getAsInt(), xz.get(1).getAsInt()));
+                }
+            }
+        }
+        if (o.has("chunks")) { // older saves: every chunk in the claim's one dimension
+            for (JsonElement e : o.getAsJsonArray("chunks")) {
+                JsonArray xz = e.getAsJsonArray();
+                c.chunks(c.dimension()).add(ChunkPos.asLong(xz.get(0).getAsInt(), xz.get(1).getAsInt()));
+            }
         }
         for (JsonElement e : o.getAsJsonArray("ranks")) {
             JsonObject ro = e.getAsJsonObject();
@@ -572,9 +720,7 @@ public final class ClaimStore {
                 if (f != null) c.setFlag(f, m.getValue().getAsBoolean());
             }
         }
-        if (o.has("sale_price")) c.salePrice = o.get("sale_price").getAsLong();
         if (o.has("abandoned_since")) c.abandonedSince = o.get("abandoned_since").getAsLong();
-        c.forfeited = o.has("forfeited") && o.get("forfeited").getAsBoolean();
         if (o.has("admin_extras")) {
             JsonObject a = o.getAsJsonObject("admin_extras");
             c.keepInventory = a.has("keep_inventory") && a.get("keep_inventory").getAsBoolean();
@@ -587,7 +733,7 @@ public final class ClaimStore {
         if (o.has("sub_areas")) {
             for (JsonElement e : o.getAsJsonArray("sub_areas")) {
                 try {
-                    c.subAreas().add(readSub(e.getAsJsonObject()));
+                    c.subAreas().add(readSub(e.getAsJsonObject(), c.dimension()));
                 } catch (RuntimeException ex) {
                     ElementsClaims.LOGGER.warn("[Claims] Skipped a sub-area in {}: {}", c.name(), ex.toString());
                 }

@@ -28,6 +28,10 @@ public final class ClaimsConfig {
     public static int maxProperties = 1;
     public static Item deedItem = Items.PAPER;
     public static int deedCooldownMinutes = 30;
+    public static int subAreaLeaveDays = 7;
+    public static int backupsKeepHourly = 5, backupsKeepDaily = 7, logKeepDays = 30;
+    public static String alertWebhook = "";
+    public static String alertRoleId = "";
     public static Item stickItem = Items.STICK;
     public static int maxSubAreas = 20;
     public static int minDistance = 2;
@@ -39,8 +43,9 @@ public final class ClaimsConfig {
 
     public static int borderRadius = 2;
     public static int borderMaxSegments = 300;
-    public static Block borderBlock = Blocks.GLASS;
-    public static int colorOwn, colorTrusted, colorOther, colorAdmin, colorSubArea, colorPreview;
+    public static Block blockOwn = Blocks.LIME_CONCRETE, blockTrusted = Blocks.LIGHT_BLUE_CONCRETE, blockOther = Blocks.RED_CONCRETE,
+            blockAdmin = Blocks.ORANGE_CONCRETE, blockSubArea = Blocks.YELLOW_CONCRETE, blockPreview = Blocks.WHITE_CONCRETE;
+    public static int colorOther, colorAdmin;
 
     private ClaimsConfig() {}
 
@@ -57,6 +62,12 @@ public final class ClaimsConfig {
         deedCooldownMinutes = Math.max(0, FILE.num("deed.cooldown_minutes", 30));
         stickItem = item(FILE.str("sub_areas.item", "minecraft:stick"), Items.STICK);
         maxSubAreas = Math.max(1, FILE.num("sub_areas.max_per_claim", 20));
+        subAreaLeaveDays = Math.max(1, Math.min(60, FILE.num("sub_areas.leave_days", 7)));
+        backupsKeepHourly = Math.max(1, Math.min(48, FILE.num("backups.keep_hourly", 5)));
+        backupsKeepDaily = Math.max(1, Math.min(60, FILE.num("backups.keep_daily", 7)));
+        logKeepDays = Math.max(1, Math.min(365, FILE.num("log.keep_days", 30)));
+        alertWebhook = FILE.str("alerts.discord_webhook", "");
+        alertRoleId = FILE.str("alerts.discord_role_id", "");
         minDistance = Math.max(0, FILE.num("distance.chunks", 2));
         defaultName = FILE.str("claims.default_name", "{player}'s Claim");
         disabledDimensions = new HashSet<>(FILE.strings("claims.disabled_dimensions"));
@@ -66,13 +77,14 @@ public final class ClaimsConfig {
 
         borderRadius = Math.max(1, Math.min(2, FILE.num("borders.radius", 2)));
         borderMaxSegments = Math.max(16, Math.min(300, FILE.num("borders.max_segments", 300)));
-        borderBlock = block(FILE.str("borders.block", "minecraft:glass"), Blocks.GLASS);
-        colorOwn = color(FILE.str("borders.colors.own", "#55FF55"), 0x55FF55);
-        colorTrusted = color(FILE.str("borders.colors.trusted", "#55FFFF"), 0x55FFFF);
-        colorOther = color(FILE.str("borders.colors.other", "#FF5555"), 0xFF5555);
-        colorAdmin = color(FILE.str("borders.colors.admin", "#FFAA00"), 0xFFAA00);
-        colorSubArea = color(FILE.str("borders.colors.sub_area", "#FFFF55"), 0xFFFF55);
-        colorPreview = color(FILE.str("borders.colors.preview", "#FFFFFF"), 0xFFFFFF);
+        blockOwn = block(FILE.str("borders.blocks.own", "minecraft:lime_concrete"), Blocks.LIME_CONCRETE);
+        blockTrusted = block(FILE.str("borders.blocks.trusted", "minecraft:light_blue_concrete"), Blocks.LIGHT_BLUE_CONCRETE);
+        blockOther = block(FILE.str("borders.blocks.other", "minecraft:red_concrete"), Blocks.RED_CONCRETE);
+        blockAdmin = block(FILE.str("borders.blocks.admin", "minecraft:orange_concrete"), Blocks.ORANGE_CONCRETE);
+        blockSubArea = block(FILE.str("borders.blocks.sub_area", "minecraft:yellow_concrete"), Blocks.YELLOW_CONCRETE);
+        blockPreview = block(FILE.str("borders.blocks.preview", "minecraft:white_concrete"), Blocks.WHITE_CONCRETE);
+        colorOther = color(FILE.str("maps.colors.other", "#FF5555"), 0xFF5555);
+        colorAdmin = color(FILE.str("maps.colors.admin", "#FFAA00"), 0xFFAA00);
     }
 
     /** Keeps a property count between 1 and the hard cap of 5. */

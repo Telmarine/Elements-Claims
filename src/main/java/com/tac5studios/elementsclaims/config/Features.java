@@ -25,7 +25,8 @@ public final class Features {
     public static ModConfigSpec SPEC;
 
     // Claiming
-    public static BooleanValue CLAIMS, CLAIM_DEED, CLAIM_UNCLAIM, CLAIM_MERGE, CLAIM_MIN_DISTANCE, CLAIM_DEED_FIRST_JOIN, CLAIM_PROPERTY_LIMIT;
+    public static BooleanValue CLAIMS, CLAIM_DEED, CLAIM_UNCLAIM, CLAIM_MERGE, CLAIM_MIN_DISTANCE, CLAIM_DEED_FIRST_JOIN, CLAIM_PROPERTY_LIMIT,
+            CLAIM_DEED_COOLDOWN, CLAIM_TRANSFER;
 
     // Trust
     public static BooleanValue TRUST, TRUST_OFFLINE;
@@ -45,7 +46,7 @@ public final class Features {
     public static BooleanValue DETECT, DETECT_AUTO_SORT, DETECT_MACHINES, DETECT_REPORT;
 
     // Sub-areas
-    public static BooleanValue SUB_AREAS, SUB_AREA_TRUST, SUB_AREA_VISITOR_FLAGS;
+    public static BooleanValue SUB_AREAS, SUB_AREA_TRUST, SUB_AREA_VISITOR_FLAGS, SUB_AREA_MANAGER, SUB_AREA_LEAVE_WAIT;
 
     // Integrations
     public static BooleanValue INTEGRATIONS, API;
@@ -56,21 +57,31 @@ public final class Features {
     private static final Map<String, BooleanValue> LIMIT_SWITCHES = new LinkedHashMap<>();
     private static final Map<String, BooleanValue> MOD_LIMITS = new LinkedHashMap<>();
 
-    // Expiry, selling, renting
-    public static BooleanValue EXPIRY, EXPIRY_NOTIFY, SELLING, SELL_ABANDONED, RENTING;
+    // Expiry
+    public static BooleanValue EXPIRY, EXPIRY_NOTIFY, EXPIRY_PLAYTIME;
 
     // Importers and maps
     public static BooleanValue IMPORT, IMPORT_OPAC, IMPORT_FTB, IMPORT_FLAN, IMPORT_CADMUS, MAPS, MAP_BLUEMAP, MAP_SQUAREMAP;
 
     // Land Config menu
     public static BooleanValue MENU, MENU_SOUNDS, MENU_LAND_FLAGS, MENU_RANKS, MENU_CUSTOM_RANKS, MENU_PLAYERS,
-            MENU_BANS, MENU_PRIVATE, MENU_RENAME;
+            MENU_BANS, MENU_PRIVATE, MENU_RENAME, MENU_DELEGATE;
 
     // Borders
     public static BooleanValue BORDERS, BORDERS_DEED, BORDERS_PREVIEW;
 
     // Admin
     public static BooleanValue ADMIN, ADMIN_INFO, ADMIN_RELOAD;
+
+    // Saving, alerts and the action log
+    public static BooleanValue BACKUPS, BACKUPS_HOURLY, BACKUPS_DAILY, ALERTS, ALERTS_CHAT, ALERTS_DISCORD, LOG, LOG_COMMAND;
+    public static final Map<com.tac5studios.elementsclaims.log.ActionLog.Category, BooleanValue> LOG_CATEGORIES =
+            new EnumMap<>(com.tac5studios.elementsclaims.log.ActionLog.Category.class);
+
+    // Overlap guard (another claim mod installed)
+    public static BooleanValue OVERLAP_FORCE;
+    /** Switches that stay on in import-only mode. */
+    private static final java.util.Set<BooleanValue> GUARD_ALLOWED = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
 
     private static void build() {
         ModConfigSpec.Builder b = new ModConfigSpec.Builder();
@@ -86,10 +97,12 @@ public final class Features {
         CLAIMS = sw(b, "enabled", true, "Turn claiming on or off. Off = no new claims; existing claims stay protected while [protection] is on.");
         CLAIM_DEED = sw(b, "deed", true, "Players claim chunks with the Claim Deed and can get a new one with /claim deed. (restart)");
         CLAIM_UNCLAIM = sw(b, "unclaim", true, "Players can unclaim their chunks (sneak + right-click with the Deed).");
-        CLAIM_MERGE = sw(b, "merge", true, "A chunk claimed next to your own claim joins it. Off = every chunk starts a new claim.");
+        CLAIM_MERGE = sw(b, "merge", true, "Admin Deed: a chunk claimed next to an admin claim joins it. Off = every admin chunk is its own admin claim. (Player chunks always go to the active property.)");
         CLAIM_MIN_DISTANCE = sw(b, "min_distance", false, "Keep a gap between different players' claims. Gap size: distance.chunks in claims.toml.");
         CLAIM_DEED_FIRST_JOIN = sw(b, "deed_on_first_join", false, "Give every new player a Claim Deed the first time they join.");
-        CLAIM_PROPERTY_LIMIT = sw(b, "property_limit", true, "Limit how many properties (separate named claims) each player can own. Number: properties.max in claims.toml (1-5). Only used while merge is on.");
+        CLAIM_PROPERTY_LIMIT = sw(b, "property_limit", true, "Limit how many properties (separate named claims) each player can own. Number: properties.max in claims.toml (1-5).");
+        CLAIM_DEED_COOLDOWN = sw(b, "deed_cooldown", true, "Wait time between /claim deed uses. Minutes: deed.cooldown_minutes in claims.toml. Staff with claims.admin skip it.");
+        CLAIM_TRANSFER = sw(b, "transfer", true, "Players can give a property to another player with /claim <property> transfer <player>.");
         b.pop();
 
         b.comment("Trusting players with /trust and /untrust.").push("trust");
@@ -115,13 +128,14 @@ public final class Features {
         MENU_RANKS = sw(b, "ranks", true, "Land owners can change what each rank may do.");
         MENU_CUSTOM_RANKS = sw(b, "custom_ranks", true, "Land owners can add, rename, reorder and delete ranks. Max ranks: ranks.max in claims.toml.");
         MENU_PLAYERS = sw(b, "player_management", true, "Promote, demote and remove trusted players from the menu.");
-        MENU_BANS = sw(b, "bans", true, "Land owners can ban players from their claim.");
+        MENU_BANS = sw(b, "bans", true, "Land owners (and their Admin Mode rank) can ban players from their claim.");
         MENU_PRIVATE = sw(b, "private_claims", true, "Land owners can make a claim private (only trusted players may enter).");
         MENU_RENAME = sw(b, "rename", true, "Land owners can rename their claim.");
+        MENU_DELEGATE = sw(b, "admin_mode", true, "The Admin Mode rank flag, which only the owner sees and sets: that rank can trust, untrust, promote, demote, remove and ban players below it. Off = only the owner can trust and ban.");
         b.pop();
 
-        b.comment("Glowing claim outlines.").push("borders");
-        BORDERS = sw(b, "enabled", true, "Turn claim outlines on or off. Colours are in claims.toml.");
+        b.comment("Claim outlines.").push("borders");
+        BORDERS = sw(b, "enabled", true, "Turn claim outlines on or off. Outline blocks are in claims.toml.");
         BORDERS_DEED = sw(b, "while_holding_deed", true, "Show nearby claim outlines while holding the Claim Deed.");
         BORDERS_PREVIEW = sw(b, "preview", true, "Show a white outline around the unclaimed chunk you stand in while holding the Deed.");
         b.pop();
@@ -154,6 +168,8 @@ public final class Features {
         SUB_AREAS = sw(b, "enabled", true, "Turn sub-areas on or off.");
         SUB_AREA_TRUST = sw(b, "trust", true, "Land owners can give players a rank inside one sub-area only.");
         SUB_AREA_VISITOR_FLAGS = sw(b, "visitor_flags", true, "Each sub-area can have its own rules for visitors.");
+        SUB_AREA_MANAGER = sw(b, "manager", true, "Owners can pick a player in a sub-area to manage its players while they're away.");
+        SUB_AREA_LEAVE_WAIT = sw(b, "removal_countdown", true, "A removed player who still has blocks in the sub-area gets time to collect them first. Days: sub_areas.leave_days in claims.toml. Off = removed right away.");
         b.pop();
 
         b.comment("Links to other mods. Each one is only used when that mod is installed.").push("integrations");
@@ -191,12 +207,7 @@ public final class Features {
         b.comment("Abandoned claims. Times are in expiry.toml.").push("expiry");
         EXPIRY = sw(b, "enabled", false, "Mark claims of players who haven't logged in for a while as abandoned, and free them after a grace period.");
         EXPIRY_NOTIFY = sw(b, "notify_owner", true, "Tell owners on login when their claim was marked abandoned.");
-        b.pop();
-
-        b.comment("Selling and renting land. Needs Elements: Economy. Prices are in market.toml. When off, none of it shows in game.").push("market");
-        SELLING = sw(b, "selling", false, "Land owners can sell a whole claim or a sub-area.");
-        SELL_ABANDONED = sw(b, "sell_abandoned", true, "With selling on, abandoned claims go up for sale instead of being freed.");
-        RENTING = sw(b, "renting", false, "Land owners can rent out sub-areas (each owner decides whether to use it).");
+        EXPIRY_PLAYTIME = sw(b, "playtime_based", true, "How long an owner can be offline depends on their playtime (playtime_days in expiry.toml). Off = everyone gets days_inactive.");
         b.pop();
 
         b.comment("Importing claims from other claim mods: /claims import <mod>.").push("import");
@@ -219,6 +230,44 @@ public final class Features {
         ADMIN_RELOAD = sw(b, "reload", true, "Reload claims.toml and messages.toml with /claims reload. (restart)");
         b.pop();
 
+        b.comment("Backups of claims.json in <world>/elements_claims/backups/. How many are kept: claims.toml [backups].").push("backups");
+        BACKUPS = sw(b, "enabled", true, "Turn backups on or off. A broken claims.json can only be restored from a backup.");
+        BACKUPS_HOURLY = sw(b, "hourly", true, "Make a backup every hour.");
+        BACKUPS_DAILY = sw(b, "daily", true, "Make a backup every day.");
+        b.pop();
+
+        b.comment("Staff alerts (a broken claims.json, restores from backup, a broken detected.toml). Always written to the server log.").push("alerts");
+        ALERTS = sw(b, "enabled", true, "Turn staff alerts on or off (the server log line is always written).");
+        ALERTS_CHAT = sw(b, "chat", true, "Show alerts in chat to online staff with claims.admin, and to staff when they log in.");
+        ALERTS_DISCORD = sw(b, "discord", true, "Send alerts to Discord. Needs [alerts] discord_webhook in claims.toml.");
+        b.pop();
+
+        b.comment("Action log: one line per change made through Claims, in <world>/elements_claims/logs/.",
+                "How long files are kept: log.keep_days in claims.toml.").push("log");
+        LOG = sw(b, "enabled", true, "Turn the action log on or off.");
+        LOG_COMMAND = sw(b, "staff_command", true, "Staff can read and search the log in game with /claims log. (restart)");
+        b.push("categories");
+        LOG_CATEGORIES.put(com.tac5studios.elementsclaims.log.ActionLog.Category.CLAIMING, sw(b, "claiming", true, "Chunks claimed and unclaimed, properties made, switched and renamed."));
+        LOG_CATEGORIES.put(com.tac5studios.elementsclaims.log.ActionLog.Category.MEMBERS, sw(b, "members", true, "Players trusted, untrusted, promoted and demoted."));
+        LOG_CATEGORIES.put(com.tac5studios.elementsclaims.log.ActionLog.Category.BANS, sw(b, "bans", true, "Bans and unbans."));
+        LOG_CATEGORIES.put(com.tac5studios.elementsclaims.log.ActionLog.Category.SETTINGS, sw(b, "settings", true, "Land flags, rank flags, ranks added, renamed, moved or deleted, private, hand out control."));
+        LOG_CATEGORIES.put(com.tac5studios.elementsclaims.log.ActionLog.Category.SUB_AREAS, sw(b, "sub_areas", true, "Sub-areas made, deleted and renamed, their players, manager and removal countdowns."));
+        LOG_CATEGORIES.put(com.tac5studios.elementsclaims.log.ActionLog.Category.TRANSFERS, sw(b, "transfers", true, "Properties given to another player."));
+        LOG_CATEGORIES.put(com.tac5studios.elementsclaims.log.ActionLog.Category.STAFF, sw(b, "staff", true, "Admin claims and their settings, imports, detected machine changes, and staff building in other players' claims."));
+        LOG_CATEGORIES.put(com.tac5studios.elementsclaims.log.ActionLog.Category.SYSTEM, sw(b, "system", true, "Abandoned claims marked and freed, and claims restored from a backup."));
+        b.pop();
+        b.pop();
+
+        b.comment("Overlap guard: when another claim mod (Open Parties and Claims, FTB Chunks, Flan, Cadmus) is installed,",
+                "Claims starts in import-only mode: no claiming, protection, menus or outlines, so the two mods never fight.",
+                "Import with /claims import <mod> confirm, remove the other mod and restart; Claims turns on by itself.").push("overlap_guard");
+        OVERLAP_FORCE = sw(b, "force_on", false, "Run Claims fully even with another claim mod installed. Not recommended.");
+        b.pop();
+
+        GUARD_ALLOWED.addAll(java.util.List.of(IMPORT, IMPORT_OPAC, IMPORT_FTB, IMPORT_FLAN, IMPORT_CADMUS, ADMIN, ADMIN_RELOAD,
+                BACKUPS, BACKUPS_HOURLY, BACKUPS_DAILY, ALERTS, ALERTS_CHAT, ALERTS_DISCORD, LOG, LOG_COMMAND));
+        GUARD_ALLOWED.addAll(LOG_CATEGORIES.values());
+
         SPEC = b.build();
     }
 
@@ -236,6 +285,8 @@ public final class Features {
 
     public static boolean on(BooleanValue feature) {
         if (feature == null) return false;
+        // Another claim mod is installed: only import, staff and safety switches stay on.
+        if (feature != OVERLAP_FORCE && !GUARD_ALLOWED.contains(feature) && OverlapGuard.active()) return false;
         try {
             return feature.getAsBoolean();
         } catch (IllegalStateException notLoaded) {

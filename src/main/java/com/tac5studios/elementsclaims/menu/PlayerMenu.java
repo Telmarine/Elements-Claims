@@ -62,7 +62,7 @@ public final class PlayerMenu extends ClaimMenu {
                     if (Manage.remove(who, claim, target)) Msg.send(who, "trust.removed", "player", name, "claim", claim.name());
                     new PlayersMenu(claim).open(who);
                 }, who -> new PlayerMenu(claim, target).open(who))));
-        if (Features.on(Features.MENU_BANS)) {
+        if (Features.on(Features.MENU_BANS) && Manage.canBan(viewer, claim)) {
             set(22, Button.of(Icons.named(Items.BARRIER, Msg.menu("menu.ban"), List.of(Msg.menu("menu.ban_info"))), (pl, c) ->
                     ConfirmMenu.ask(pl, Icons.named(Items.BARRIER, Msg.menu("menu.ban_confirm", "player", name)), List.of(), who -> {
                         if (Manage.ban(who, claim, target)) Msg.send(who, "menu.banned", "player", name, "claim", claim.name());

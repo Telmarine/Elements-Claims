@@ -47,7 +47,6 @@ public final class SubAreasMenu extends PagedMenu<SubArea> {
         lore.add(Msg.menu("subarea.box", "x1", min.getX(), "y1", min.getY(), "z1", min.getZ(), "x2", max.getX(), "y2", max.getY(), "z2", max.getZ()));
         lore.add(Msg.menu("subarea.blocks", "blocks", a.volume()));
         lore.add(Msg.menu("subarea.members_count", "count", a.members().size()));
-        if (a.renter != null) lore.add(Msg.menu("subarea.rented_to", "player", com.tac5studios.elementsclaims.claim.Claiming.name(viewer.server, a.renter)));
         lore.add(Msg.menu("menu.player_click"));
         set(slot, Button.of(Icons.named(Items.OAK_SIGN, Msg.menu("subarea.name", "area", a.name()), lore),
                 (p, c) -> new SubAreaMenu(claim, a).open(p)));

@@ -15,6 +15,8 @@ public final class PlayerData {
     public long lastSeen;
     /** Name the player had the last time they logged in. Used when the server's name cache doesn't have them. */
     public String lastName;
-    /** Items returned from a rented sub-area, given on next login. */
+    /** The property new chunks are added to (null = the player's first property). */
+    public java.util.UUID activeProperty;
+    /** Items waiting to be handed back on next login (kept items from an admin-claim death). */
     public final List<ItemStack> pendingItems = new ArrayList<>();
 }

@@ -6,7 +6,6 @@ import com.tac5studios.elementsclaims.claim.Claiming;
 import com.tac5studios.elementsclaims.claim.Manage;
 import com.tac5studios.elementsclaims.config.ClaimsConfig;
 import com.tac5studios.elementsclaims.config.Features;
-import com.tac5studios.elementsclaims.market.Market;
 import com.tac5studios.elementsclaims.messages.Msg;
 import com.tac5studios.elementsclaims.ui.Button;
 import com.tac5studios.elementsclaims.ui.Icons;
@@ -56,12 +55,13 @@ public final class LandConfigMenu extends ClaimMenu {
         // Info
         List<Component> info = new ArrayList<>();
         info.add(Msg.menu("menu.info_owner", "owner", Claiming.ownerName(p.server, claim)));
-        info.add(Msg.menu("menu.info_chunks", "chunks", claim.chunks().size()));
+        info.add(Msg.menu("menu.info_chunks", "chunks", claim.chunkCount()));
         info.add(Msg.menu("menu.info_members", "members", claim.members().size()));
         info.add(Msg.menu("menu.info_rank", "rank", claim.rankOf(p.getUUID()).name()));
         set(4, Button.display(Icons.named(Items.FILLED_MAP, Msg.menu("menu.info_name", "claim", claim.name()), info)));
 
-        if (land && Features.on(Features.MENU_LAND_FLAGS)) {
+        boolean owner = Manage.full(p, claim); // every flag is the owner's call
+        if (owner && Features.on(Features.MENU_LAND_FLAGS)) {
             set(10, Button.of(Icons.named(Items.GRASS_BLOCK, Msg.menu("menu.land_flags"),
                     List.of(Msg.menu("menu.land_flags_info"))), (pl, c) -> new LandFlagsMenu(claim).open(pl)));
         }
@@ -73,7 +73,7 @@ public final class LandConfigMenu extends ClaimMenu {
             set(12, Button.of(Icons.named(Items.PLAYER_HEAD, Msg.menu("menu.players"),
                     List.of(Msg.menu("menu.players_info", "members", claim.members().size()))), (pl, c) -> new PlayersMenu(claim).open(pl)));
         }
-        if (players && Features.on(Features.MENU_BANS)) {
+        if (Manage.canBan(p, claim) && Features.on(Features.MENU_BANS)) {
             set(13, Button.of(Icons.named(Items.BARRIER, Msg.menu("menu.bans"),
                     List.of(Msg.menu("menu.bans_info", "count", claim.bans().size()))), (pl, c) -> new BansMenu(claim).open(pl)));
         }
@@ -91,7 +91,7 @@ public final class LandConfigMenu extends ClaimMenu {
                         new LandConfigMenu(claim).open(who);
                     }, who -> new LandConfigMenu(claim).open(who))));
         }
-        if (land && Features.on(Features.MENU_PRIVATE)) {
+        if (owner && Features.on(Features.MENU_PRIVATE)) {
             boolean priv = claim.isPrivate();
             ItemStack door = Icons.named(priv ? Items.IRON_DOOR : Items.OAK_DOOR,
                     Msg.menu(priv ? "menu.private_on" : "menu.private_off"), List.of(Msg.menu("menu.private_info")));
@@ -101,38 +101,11 @@ public final class LandConfigMenu extends ClaimMenu {
                 refresh();
             }));
         }
+        // Owner only: nobody else sees this button.
         if (Features.on(Features.SUB_AREAS) && com.tac5studios.elementsclaims.subarea.SubAreas.canManage(p, claim)) {
             set(15, Button.of(Icons.named(Items.STICK, Msg.menu("subarea.list"),
                     List.of(Msg.menu("subarea.list_info", "count", claim.subAreas().size()))),
                     (pl, c) -> new com.tac5studios.elementsclaims.subarea.SubAreasMenu(claim).open(pl)));
-        }
-        if (Market.selling() && claim.owner() != null && claim.isOwner(p.getUUID()) && !claim.forfeited) {
-            boolean forSale = claim.salePrice >= 0;
-            List<Component> lore = new ArrayList<>();
-            lore.add(forSale ? Msg.menu("market.for_sale", "price", Market.format(claim.salePrice)) : Msg.menu("market.not_for_sale"));
-            lore.add(Msg.menu("market.sell_claim_info"));
-            lore.add(Msg.menu("market.click_set_price"));
-            if (forSale) lore.add(Msg.menu("market.right_click_stop"));
-            ItemStack gold = Icons.named(Items.GOLD_INGOT, Msg.menu("market.sell_claim"), lore);
-            if (forSale) gold.set(DataComponents.ENCHANTMENT_GLINT_OVERRIDE, true);
-            set(22, Button.of(gold, (pl, c) -> {
-                if (c.isRight() && forSale) {
-                    claim.salePrice = -1;
-                    ClaimStore.markDirty();
-                    refresh();
-                    return;
-                }
-                TextInput.ask(pl, Msg.menu("market.price_title"), "", (who, text) -> {
-                    var price = Market.parse(text);
-                    if (price.isEmpty()) Msg.send(who, "market.bad_price", "input", text);
-                    else if (ClaimStore.byId(claim.id()) == claim && claim.isOwner(who.getUUID())) {
-                        claim.salePrice = price.get();
-                        ClaimStore.markDirty();
-                        Msg.send(who, "market.listed", "claim", claim.name(), "price", Market.format(price.get()).getString());
-                    }
-                    new LandConfigMenu(claim).open(who);
-                }, who -> new LandConfigMenu(claim).open(who));
-            }));
         }
         if (claim.isAdmin() && Features.on(Features.ADMIN_CLAIMS) && com.tac5studios.elementsclaims.protect.Access.staff(p, claim)) {
             set(23, Button.of(Icons.named(Items.COMMAND_BLOCK, Msg.menu("admin.settings"), List.of(Msg.menu("admin.settings_info"))),

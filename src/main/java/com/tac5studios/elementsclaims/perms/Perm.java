@@ -56,6 +56,8 @@ public final class Perm {
     public static final String DETECTED = node("detected", Who.STAFF, () -> Features.on(Features.DETECT));
     /** /claims import: import claims from other claim mods. */
     public static final String IMPORT = node("import", Who.STAFF, () -> Features.on(Features.IMPORT));
+    /** Read and search the action log with /claims log. */
+    public static final String LOG = node("log", Who.STAFF, () -> Features.on(Features.LOG, Features.LOG_COMMAND));
     /** Claims of players with this never become abandoned. */
     public static final String EXPIRY_EXEMPT = node("expiry.exempt", Who.STAFF, () -> Features.on(Features.EXPIRY));
 
@@ -135,6 +137,16 @@ public final class Perm {
     public static int properties(ServerPlayer player) {
         try {
             Integer v = PermissionAPI.getPermission(player, PROPERTIES);
+            return v == null ? -1 : v;
+        } catch (RuntimeException ex) {
+            return -1;
+        }
+    }
+
+    /** The claims.properties value for an offline player, or -1 when nothing sets it. */
+    public static int properties(UUID player) {
+        try {
+            Integer v = PermissionAPI.getOfflinePermission(player, PROPERTIES);
             return v == null ? -1 : v;
         } catch (RuntimeException ex) {
             return -1;

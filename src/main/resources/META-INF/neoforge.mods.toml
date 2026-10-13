@@ -31,13 +31,5 @@ description = '''${mod_description}'''
     ordering = "NONE"
     side = "SERVER"
 
-# Optional: money for selling and renting land.
-[[dependencies.${mod_id}]]
-    modId = "elements_economy"
-    type = "optional"
-    versionRange = "[1.0.0,)"
-    ordering = "NONE"
-    side = "SERVER"
-
 [[mixins]]
 config = "elements_claims.mixins.json"

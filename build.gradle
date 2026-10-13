@@ -12,16 +12,11 @@ base {
 java.toolchain.languageVersion = JavaLanguageVersion.of(21)
 
 repositories {
-    mavenLocal()      // Elements: Vault, published from the elements-vault folder (gradlew publishToMavenLocal)
     mavenCentral()
 }
 
 dependencies {
     implementation "net.neoforged:neoforge:${neo_version}"
-
-    // Elements: Vault (money for selling and renting land). Compile only: it comes with Elements: Economy.
-    // Claims runs without it; the market features just stay hidden.
-    compileOnly "com.tac5studios:elements_vault:${vault_version}"
 }
 
 // Compile-only stubs of other mods' classes (Create, Crystal Tools) live in src/main/java so the mixins compile

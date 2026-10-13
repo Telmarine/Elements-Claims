@@ -34,7 +34,7 @@ public final class BansMenu extends PagedMenu<UUID> {
     @Override
     protected boolean stillValid(Player player) {
         return player instanceof ServerPlayer sp && Features.on(Features.MENU) && Features.on(Features.MENU_BANS)
-                && ClaimStore.byId(claim.id()) == claim && Manage.canManagePlayers(sp, claim);
+                && ClaimStore.byId(claim.id()) == claim && Manage.canBan(sp, claim);
     }
 
     @Override

@@ -63,11 +63,17 @@ public final class Machines {
         return module + ":" + name.replace(' ', '_');
     }
 
+    /**
+     * May this machine (a mod's stand-in player) act at pos inside claim c?
+     *
+     * Machines are judged by the player who placed them, not by where the stand-in player happens to stand.
+     * Create's deployer, for example, puts its stand-in 1.5 blocks in front of itself, so a deployer placed just
+     * outside a claim and facing in would otherwise count as "inside" and could grief it.
+     *  - placer known: the machine can do what the placer could do there. The land owner's own machines always work,
+     *    even when they sit outside the claim.
+     *  - placer unknown: denied, unless staff set that machine to "allow" with /claims detected.
+     */
     public static boolean allowed(FakePlayer fake, Claim c, BlockPos pos, RankFlag flag) {
-        // A machine standing in the claim always runs there (Create rule).
-        Claim home = ClaimStore.at(fake.level(), fake.blockPosition());
-        if (home == c) return true;
-
         Mode mode = Mode.PLAYER;
         if (Features.on(Features.DETECT, Features.DETECT_MACHINES)) {
             String key = key(fake);
@@ -84,8 +90,8 @@ public final class Machines {
         if (mode == Mode.DENY) return false;
         UUID owner = owner(fake);
         if (owner == null) return false;
-        if (home != null && c.owner() != null && c.owner().equals(home.owner())) return true; // same owner's next claim
-        return Access.allowedFor(owner, c, pos, flag);
+        if (c.isOwner(owner)) return true;
+        return Access.allowedFor(owner, c, ClaimStore.dim(fake.level()), pos, flag);
     }
 
     /** The player who placed the machine, when the mod stores one (field "owner"/"placer"/..., or a real player's UUID). */

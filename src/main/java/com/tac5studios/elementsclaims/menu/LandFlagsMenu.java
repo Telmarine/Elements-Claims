@@ -19,7 +19,7 @@ public final class LandFlagsMenu extends ClaimMenu {
 
     @Override
     protected boolean allowed(ServerPlayer p) {
-        return Features.on(Features.MENU_LAND_FLAGS) && Manage.canManageLand(p, claim);
+        return Features.on(Features.MENU_LAND_FLAGS) && Manage.full(p, claim); // flags are the owner's only
     }
 
     @Override

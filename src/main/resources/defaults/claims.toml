@@ -33,6 +33,10 @@ cooldown_minutes = 30
 item = "minecraft:stick"
 # Most sub-areas one claim can have.
 max_per_claim = 20
+# When the owner removes someone from a sub-area while blocks they placed are still there,
+# the removal waits this many days so they can collect their things (1-60).
+# After that they're removed and what's left is the owner's to deal with.
+leave_days = 7
 
 [distance]
 # Gap (in chunks) kept between different players' claims.
@@ -59,14 +63,34 @@ name_max_length = 16
 radius = 2
 # Most outline pieces sent to one player at once. 16-300.
 max_segments = 300
-# Block the outline bars are made of. The glow colour is drawn around it.
-block = "minecraft:glass"
 
-[borders.colors]
-own = "#55FF55"
-trusted = "#55FFFF"
+[borders.blocks]
+# Block each outline is made of. Drawn full-bright with no glow, so players and blocks in front hide it.
+own = "minecraft:lime_concrete"
+trusted = "minecraft:light_blue_concrete"
+other = "minecraft:red_concrete"
+admin = "minecraft:orange_concrete"
+sub_area = "minecraft:yellow_concrete"
+# The unclaimed chunk you stand in while holding the Deed.
+preview = "minecraft:white_concrete"
+
+[maps.colors]
+# Claim colours on web maps.
 other = "#FF5555"
 admin = "#FFAA00"
-sub_area = "#FFFF55"
-# The unclaimed chunk you stand in while holding the Deed.
-preview = "#FFFFFF"
+
+[backups]
+# How many backups of claims.json to keep in <world>/elements_claims/backups/. Switches are in features.toml [backups].
+keep_hourly = 5
+keep_daily = 7
+
+[log]
+# Days of action log files to keep in <world>/elements_claims/logs/ (one file per day). 1-365.
+keep_days = 30
+
+[alerts]
+# Staff alerts (for example a broken claims.json) go to the log and to online staff with claims.admin.
+# To also get them in Discord, paste a channel webhook URL here. Blank = off.
+discord_webhook = ""
+# Role to ping with each alert (the role's ID number, not its name). Blank = no ping.
+discord_role_id = ""

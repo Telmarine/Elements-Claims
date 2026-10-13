@@ -1,5 +1,6 @@
 package com.tac5studios.elementsclaims.claim;
 
+import com.tac5studios.elementsclaims.log.ActionLog;
 import com.mojang.authlib.GameProfile;
 import com.tac5studios.elementsclaims.config.ClaimsConfig;
 import com.tac5studios.elementsclaims.config.Features;
@@ -9,6 +10,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.ChunkPos;
 
+import java.util.List;
 import java.util.UUID;
 
 /** Claiming and unclaiming chunks, with every rule checked in one place. */
@@ -37,33 +39,66 @@ public final class Claiming {
         return ClaimsConfig.clampProperties(v >= 0 ? v : ClaimsConfig.maxProperties);
     }
 
-    /** Separate claims this player owns right now. Admin claims and forfeited claims don't count. */
+    /** Properties this player owns right now. Admin claims don't count. */
     public static int propertiesUsed(UUID player) {
-        int n = 0;
-        for (Claim c : ClaimStore.ownedBy(player)) if (!c.forfeited) n++;
-        return n;
+        return ClaimStore.ownedBy(player).size();
     }
 
-    /** True when the property limit is in use (it needs merging on, or every chunk would be its own claim). */
+    /** True when the property limit is in use. */
     public static boolean propertyLimitOn() {
-        return Features.on(Features.CLAIM_PROPERTY_LIMIT) && Features.on(Features.CLAIM_MERGE);
+        return Features.on(Features.CLAIM_PROPERTY_LIMIT);
     }
 
-    /** True when claiming this chunk would join one of the player's existing claims instead of starting a new one. */
-    private static boolean joinsOwnClaim(String dim, ChunkPos pos, UUID player) {
-        for (ChunkPos n : new ChunkPos[]{
-                new ChunkPos(pos.x + 1, pos.z), new ChunkPos(pos.x - 1, pos.z),
-                new ChunkPos(pos.x, pos.z + 1), new ChunkPos(pos.x, pos.z - 1)}) {
-            Claim c = ClaimStore.at(dim, n);
-            if (c != null && !c.isAdmin() && c.isOwner(player)) return true;
-        }
-        return false;
+    /** Property limit for a player who may be offline. */
+    public static int maxProperties(UUID player) {
+        int v = Perm.properties(player);
+        return ClaimsConfig.clampProperties(v >= 0 ? v : ClaimsConfig.maxProperties);
+    }
+
+    /**
+     * The property the player is actively managing: new chunks next to it join it. If the saved one is gone,
+     * their oldest property takes over. Null when they own nothing.
+     */
+    public static Claim activeProperty(UUID player) {
+        PlayerData d = ClaimStore.player(player);
+        Claim c = d.activeProperty == null ? null : ClaimStore.byId(d.activeProperty);
+        if (c != null && !c.isAdmin() && c.isOwner(player)) return c;
+        Claim oldest = null;
+        for (Claim o : ClaimStore.ownedBy(player)) if (oldest == null || o.created() < oldest.created()) oldest = o;
+        d.activeProperty = oldest == null ? null : oldest.id();
+        return oldest;
+    }
+
+    public static void setActive(UUID player, Claim c) {
+        ClaimStore.player(player).activeProperty = c == null ? null : c.id();
+        ClaimStore.markDirty();
+    }
+
+    /** One of the player's properties by name (not case sensitive), or null. */
+    public static Claim propertyNamed(UUID player, String name) {
+        for (Claim c : ClaimStore.ownedBy(player)) if (c.name().equalsIgnoreCase(name)) return c;
+        return null;
+    }
+
+    /** A name for a new property that the owner isn't using yet: "Steve's Claim", then "Steve's Claim 2"... */
+    private static String freeName(UUID owner, String base) {
+        if (propertyNamed(owner, base) == null) return base;
+        for (int n = 2; ; n++) if (propertyNamed(owner, base + " " + n) == null) return base + " " + n;
     }
 
     // ---------- claim ----------
 
-    /** Claim the chunk the player stands in. Messages the player either way. Returns true when claimed. */
+    /** Claim the chunk the player stands in for their active property. Returns true when claimed. */
     public static boolean claimHere(ServerPlayer player) {
+        return claimHere(player, null);
+    }
+
+    /**
+     * Claim the chunk the player stands in. Messages the player either way. Returns true when claimed.
+     * @param newProperty null = add it to the active property (or start the first property). A name = start a new
+     *                    property with that name here (/claim create), which then becomes the active one.
+     */
+    public static boolean claimHere(ServerPlayer player, String newProperty) {
         if (!Features.on(Features.CLAIMS)) {
             Msg.send(player, "general.disabled");
             return false;
@@ -87,7 +122,27 @@ public final class Claiming {
             Msg.send(player, "claim.full", "used", used, "max", max);
             return false;
         }
-        if (propertyLimitOn() && !joinsOwnClaim(dim, pos, id)) {
+
+        // Which property does this chunk go to? Always the active one, wherever the chunk is.
+        // A new property is only ever started on purpose with /claim create (or when the player has none yet).
+        Claim target = null;
+        String name;
+        if (newProperty == null) {
+            // The active property can have chunks in any dimension.
+            target = activeProperty(id);
+            name = freeName(id, ClaimsConfig.defaultName.replace("{player}", player.getGameProfile().getName()));
+        } else {
+            name = Manage.clip(newProperty, ClaimsConfig.claimNameMax);
+            if (name.isBlank()) {
+                Msg.send(player, "claim.bad_name");
+                return false;
+            }
+            if (propertyNamed(id, name) != null) {
+                Msg.send(player, "menu.name_taken", "claim", name);
+                return false;
+            }
+        }
+        if (target == null && propertyLimitOn()) {
             int owned = propertiesUsed(id);
             int maxProperties = maxProperties(player);
             if (owned >= maxProperties) {
@@ -106,9 +161,15 @@ public final class Claiming {
                 return false;
             }
         }
-        String name = ClaimsConfig.defaultName.replace("{player}", player.getGameProfile().getName());
-        Claim c = ClaimStore.addChunk(id, false, dim, pos, name, Features.on(Features.CLAIM_MERGE));
+        boolean isNew = target == null;
+        Claim c = ClaimStore.addChunk(target, id, false, dim, pos, name);
+        if (isNew) {
+            setActive(id, c);
+            if (propertiesUsed(id) > 1) Msg.send(player, "claim.new_property", "claim", c.name());
+        }
         Msg.send(player, "claim.claimed", "claim", c.name(), "used", used + 1, "max", max);
+        if (isNew) ActionLog.log(ActionLog.Category.CLAIMING, player, c, "property made", c.name());
+        ActionLog.log(ActionLog.Category.CLAIMING, player, c, "claimed", ActionLog.chunk(dim, pos.x, pos.z));
         return true;
     }
 
@@ -121,9 +182,75 @@ public final class Claiming {
             Msg.send(player, "claim.taken", "claim", existing.name(), "owner", ownerName(player.server, existing));
             return false;
         }
-        Claim c = ClaimStore.addChunk(null, true, dim, pos, Msg.raw("admin.default_name"), Features.on(Features.CLAIM_MERGE));
-        Msg.send(player, "admin.claimed", "claim", c.name(), "chunks", c.chunks().size());
+        // Joins the oldest admin claim it touches. Admin claims are never merged either.
+        Claim target = null;
+        if (Features.on(Features.CLAIM_MERGE)) {
+            for (Claim t : ClaimStore.touching(dim, pos, Claim::isAdmin)) {
+                if (target == null || t.created() < target.created()) target = t;
+            }
+        }
+        Claim c = ClaimStore.addChunk(target, null, true, dim, pos, Msg.raw("admin.default_name"));
+        Msg.send(player, "admin.claimed", "claim", c.name(), "chunks", c.chunkCount());
+        ActionLog.log(ActionLog.Category.STAFF, player, c, "admin claimed", ActionLog.chunk(dim, pos.x, pos.z));
         return true;
+    }
+
+    // ---------- transfer ----------
+
+    /** Can the receiver take the claim's chunks? The total chunk allowance always applies. */
+    public static boolean hasRoom(UUID receiver, Claim c) {
+        return ClaimStore.chunksUsed(receiver) + c.chunkCount() <= allowance(receiver);
+    }
+
+    /** The receiver's active property, which the claim can be added to, or null when they own none. */
+    public static Claim joinTarget(UUID receiver, Claim c) {
+        Claim active = activeProperty(receiver);
+        return active != null && active != c ? active : null;
+    }
+
+    /** Can the receiver keep the claim as a property of its own? */
+    public static boolean canKeepSeparate(UUID receiver) {
+        return !propertyLimitOn() || propertiesUsed(receiver) < maxProperties(receiver);
+    }
+
+    /** Why this player can't take over the claim, as a message key, or null when they can. */
+    public static String cantReceive(UUID receiver, Claim c) {
+        if (!hasRoom(receiver, c)) return "transfer.no_chunks";
+        if (joinTarget(receiver, c) == null && !canKeepSeparate(receiver)) return "transfer.no_property_slot";
+        return null;
+    }
+
+    /** Message pairs for a receiver's chunk room: used, max and free. */
+    public static Object[] room(UUID receiver) {
+        int used = ClaimStore.chunksUsed(receiver), max = allowance(receiver);
+        return new Object[]{"used", used, "max", max, "free", Math.max(0, max - used)};
+    }
+
+    /** Join message pairs. */
+    public static Object[] pairs(Object[] a, Object... b) {
+        Object[] out = new Object[a.length + b.length];
+        System.arraycopy(a, 0, out, 0, a.length);
+        System.arraycopy(b, 0, out, a.length, b.length);
+        return out;
+    }
+
+    /** Give a claim to another player and add its chunks (and sub-areas) to their active property. */
+    public static void transferInto(Claim c, Claim into) {
+        UUID old = c.owner();
+        if (old != null && c.id().equals(ClaimStore.player(old).activeProperty)) ClaimStore.player(old).activeProperty = null;
+        ClaimStore.moveInto(c, into);
+    }
+
+    /** Give a claim to another player. Their own active property stays active. */
+    public static void transfer(Claim c, UUID receiver) {
+        UUID old = c.owner();
+        c.setOwner(receiver);
+        c.members().remove(receiver);
+        c.bans().remove(receiver);
+        c.abandonedSince = 0;
+        if (old != null && c.id().equals(ClaimStore.player(old).activeProperty)) ClaimStore.player(old).activeProperty = null;
+        if (activeProperty(receiver) == null) setActive(receiver, c);
+        ClaimStore.markDirty();
     }
 
     /** Another owner's claim (or an admin claim) within this many chunks, or null. */
@@ -161,6 +288,10 @@ public final class Claiming {
             }
         }
         ClaimStore.removeChunk(dim, pos);
+        boolean gone = ClaimStore.byId(c.id()) == null;
+        ActionLog.log(c.isAdmin() ? ActionLog.Category.STAFF : ActionLog.Category.CLAIMING, player, c,
+                c.isAdmin() ? "admin unclaimed" : "unclaimed",
+                ActionLog.chunk(dim, pos.x, pos.z) + (gone ? " (last chunk, property removed)" : "") + (own || c.isAdmin() ? "" : " (staff)"));
         if (own) {
             int used = ClaimStore.chunksUsed(player.getUUID());
             Msg.send(player, "claim.unclaimed", "claim", c.name(), "used", used, "max", allowance(player));

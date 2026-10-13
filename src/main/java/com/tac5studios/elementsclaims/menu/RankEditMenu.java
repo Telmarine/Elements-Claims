@@ -39,7 +39,7 @@ public final class RankEditMenu extends ClaimMenu {
 
     private static boolean shown(Rank r, RankFlag f) {
         if (!r.isVisitor()) return true;
-        return f != RankFlag.MANAGE_PLAYERS && f != RankFlag.MANAGE_LAND && f != RankFlag.SUB_AREAS;
+        return !f.isManagement();
     }
 
     @Override
@@ -49,10 +49,12 @@ public final class RankEditMenu extends ClaimMenu {
         int slot = 0;
         for (RankFlag f : RankFlag.values()) {
             if (!shown(rank, f)) continue;
+            // Admin Mode: only the owner sees it.
+            if (f == RankFlag.ADMIN_MODE && (!Manage.full(p, claim) || !Features.on(Features.MENU_DELEGATE))) continue;
             boolean on = rank.has(f);
             int s = slot++;
             set(s, Button.of(MenuItems.toggle(MenuItems.icon(f), Msg.raw("rank_flag_names." + f.key()),
-                    Msg.raw("rank_flag_info." + f.key()), on, edit), (pl, c) -> toggle(pl, f)));
+                    Msg.raw("rank_flag_info." + f.key()), on, edit && Manage.canGrant(p, claim, f)), (pl, c) -> toggle(pl, f)));
         }
 
         set(45, Button.of(MenuItems.back(), (pl, c) -> new RanksMenu(claim).open(pl)));
@@ -80,10 +82,11 @@ public final class RankEditMenu extends ClaimMenu {
     private void toggle(ServerPlayer p, RankFlag f) {
         if (!Manage.canEditRankFlags(p, claim, rank)) return;
         boolean on = !rank.has(f);
-        if (on && f == RankFlag.MANAGE_PLAYERS) {
-            // SPEC: giving promote / demote / remove power to a rank needs an "Are you sure?".
-            ConfirmMenu.ask(p, Icons.named(Items.PLAYER_HEAD, Msg.menu("menu.manage_players_confirm", "rank", rank.name())),
-                    List.of(Msg.menu("menu.manage_players_confirm_info", "rank", rank.name())), who -> {
+        if (on && (f == RankFlag.MANAGE_PLAYERS || f == RankFlag.ADMIN_MODE)) {
+            // SPEC: giving power over other players to a rank needs an "Are you sure?".
+            String k = f == RankFlag.ADMIN_MODE ? "menu.admin_mode_confirm" : "menu.manage_players_confirm";
+            ConfirmMenu.ask(p, Icons.named(MenuItems.icon(f), Msg.menu(k, "rank", rank.name())),
+                    List.of(Msg.menu(k + "_info", "rank", rank.name())), who -> {
                         Manage.setRankFlag(who, claim, rank, f, true);
                         new RankEditMenu(claim, rank).open(who);
                     }, who -> new RankEditMenu(claim, rank).open(who));

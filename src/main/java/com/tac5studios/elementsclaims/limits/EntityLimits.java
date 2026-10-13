@@ -87,7 +87,7 @@ public final class EntityLimits {
 
     private static int count(ServerLevel level, Claim claim, Category cat) {
         int n = 0;
-        for (long l : claim.chunks()) {
+        for (long l : claim.chunks(ClaimStore.dim(level))) {
             if (level.getChunkSource().getChunkNow(ChunkPos.getX(l), ChunkPos.getZ(l)) == null) continue;
             n += count(level, new ChunkPos(l), cat);
         }

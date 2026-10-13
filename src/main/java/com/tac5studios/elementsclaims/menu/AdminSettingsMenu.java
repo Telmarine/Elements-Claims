@@ -54,6 +54,7 @@ public final class AdminSettingsMenu extends ClaimMenu {
         set(slot, Button.of(MenuItems.toggle(icon, Msg.raw("admin." + key), Msg.raw("admin." + key + "_info"), get.get(), true), (p, c) -> {
             setter.accept(!get.get());
             ClaimStore.markDirty();
+            com.tac5studios.elementsclaims.log.ActionLog.log(com.tac5studios.elementsclaims.log.ActionLog.Category.STAFF, p, claim, "admin claim setting", key + " " + (get.get() ? "on" : "off"));
             refresh();
         }));
     }
@@ -89,6 +90,7 @@ public final class AdminSettingsMenu extends ClaimMenu {
                     List.of(Msg.menu("admin.command_remove"))), (p, c) -> {
                 list().remove(cmd);
                 ClaimStore.markDirty();
+                com.tac5studios.elementsclaims.log.ActionLog.log(com.tac5studios.elementsclaims.log.ActionLog.Category.STAFF, p, claim, enter ? "enter command removed" : "leave command removed", "/" + cmd);
                 refresh();
             }));
         }
@@ -101,6 +103,7 @@ public final class AdminSettingsMenu extends ClaimMenu {
                         if (!text.isBlank() && ClaimStore.byId(claim.id()) == claim) {
                             list().add(text.trim());
                             ClaimStore.markDirty();
+                            com.tac5studios.elementsclaims.log.ActionLog.log(com.tac5studios.elementsclaims.log.ActionLog.Category.STAFF, who, claim, enter ? "enter command added" : "leave command added", "/" + text.trim());
                         }
                         new CommandsMenu(claim, enter).open(who);
                     }, who -> new CommandsMenu(claim, enter).open(who))));

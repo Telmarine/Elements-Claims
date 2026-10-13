@@ -193,12 +193,15 @@ public final class Protection {
         if (flag != null && !Access.check(p, p.level(), e.getTarget().blockPosition(), flag)) e.setCanceled(true);
     }
 
-    /** Arrows, tridents and other projectiles shot by players. Melee is stopped earlier by onAttack. */
+    /**
+     * Every hit a player causes: arrows, tridents and other projectiles, and also the extra mobs a sweeping sword
+     * hits. Only the mob you click goes through onAttack; the others are only seen here.
+     */
     @SubscribeEvent
     public static void onDamage(LivingIncomingDamageEvent e) {
         Entity src = e.getSource().getEntity();
         if (!(src instanceof Player p) || p.level().isClientSide()) return;
-        if (e.getSource().getDirectEntity() == p || e.getEntity() == p) return;
+        if (e.getEntity() == p) return;
         RankFlag flag = Classify.attack(e.getEntity(), p);
         if (flag != null && !Access.check(p, p.level(), e.getEntity().blockPosition(), flag)) e.setCanceled(true);
     }

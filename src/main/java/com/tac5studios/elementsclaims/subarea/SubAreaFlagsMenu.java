@@ -29,7 +29,8 @@ public final class SubAreaFlagsMenu extends ClaimMenu {
 
     @Override
     protected boolean allowed(ServerPlayer p) {
-        return Features.on(Features.SUB_AREA_VISITOR_FLAGS) && claim.subArea(area.id()) == area && SubAreas.canManage(p, claim);
+        return Features.on(Features.SUB_AREA_VISITOR_FLAGS) && claim.subArea(area.id()) == area
+                && com.tac5studios.elementsclaims.claim.Manage.full(p, claim); // flags are the owner's only
     }
 
     @Override
@@ -37,7 +38,7 @@ public final class SubAreaFlagsMenu extends ClaimMenu {
         Set<RankFlag> flags = area.visitorFlags() != null ? area.visitorFlags() : claim.visitorRank().flags();
         int slot = 0;
         for (RankFlag f : RankFlag.values()) {
-            if (f == RankFlag.MANAGE_LAND || f == RankFlag.MANAGE_PLAYERS || f == RankFlag.SUB_AREAS) continue;
+            if (f.isManagement()) continue;
             boolean on = flags.contains(f);
             set(slot++, Button.of(MenuItems.toggle(MenuItems.icon(f), Msg.raw("rank_flag_names." + f.key()),
                     Msg.raw("rank_flag_info." + f.key()), on, true), (p, c) -> {
@@ -46,6 +47,7 @@ public final class SubAreaFlagsMenu extends ClaimMenu {
                 if (!now.remove(f)) now.add(f);
                 area.setVisitorFlags(now);
                 ClaimStore.markDirty();
+                com.tac5studios.elementsclaims.log.ActionLog.log(com.tac5studios.elementsclaims.log.ActionLog.Category.SUB_AREAS, p, claim, "sub-area visitor flag", area.name() + ": " + f.key() + " " + (now.contains(f) ? "on" : "off"));
                 refresh();
             }));
         }
@@ -54,6 +56,7 @@ public final class SubAreaFlagsMenu extends ClaimMenu {
             set(49, Button.of(Icons.named(Items.BUCKET, Msg.menu("subarea.visitors_reset"), List.of(Msg.menu("subarea.visitors_same"))), (p, c) -> {
                 area.setVisitorFlags(null);
                 ClaimStore.markDirty();
+                com.tac5studios.elementsclaims.log.ActionLog.log(com.tac5studios.elementsclaims.log.ActionLog.Category.SUB_AREAS, p, claim, "sub-area visitor flags reset", area.name() + " uses the claim's visitor rules again");
                 refresh();
             }));
         }

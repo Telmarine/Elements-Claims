@@ -201,12 +201,10 @@ public final class Deed {
             Claim here = ClaimStore.at(p.level(), p.blockPosition());
             if (here != null && Manage.canOpenMenu(p, here)) {
                 if (!LandConfigMenu.open(p, here)) {
-                    Msg.send(p, "claim.info_here", "claim", here.name(), "chunks", here.chunks().size(),
+                    Msg.send(p, "claim.info_here", "claim", here.name(), "chunks", here.chunkCount(),
                             "members", here.members().size());
                 }
                 changed = false;
-            } else if (here != null && com.tac5studios.elementsclaims.market.Market.offer(p, here)) {
-                changed = false; // the land (or a sub-area) here is for sale or rent: the offer opened
             } else {
                 changed = Claiming.claimHere(p);
             }
