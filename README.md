@@ -1,56 +1,87 @@
 # Elements: Claims
 
-Land claiming for NeoForge 1.21.1 servers, in the Elements family (TAC5 Studios / Telmarine).
+Elements: Claims is a server-side land claiming mod for NeoForge 1.21.1, part of the Elements family by Telmarine.
 
-- Server-side only. Players install nothing (vanilla clients work).
-- Claim chunks with the **Claim Deed**, trust players into ranks, protect your land.
-- Runs on its own or next to Elements: Nexus (Nexus ranks set the chunk allowance).
+Players claim chunks with a Claim Deed and trust other players into ranks they set up themselves.
+
+The mod is stand-alone and has no dependencies. Every player gets the starter chunk allowance from `claims.toml`. I built it this way so server owners and devs can hook in their own ranks. Permissions go through NeoForge's permission API, so any permission mod that sets the `claims.limit` number node can give each rank its own allowance. Elements: Nexus is one option, but you don't need it.
 
 ## Players
-| Action | How |
-|---|---|
-| Claim the chunk you stand in | Right-click with the Claim Deed |
-| Unclaim it | Sneak + right-click with the Deed |
-| New Deed if lost | `/claim deed` |
-| Land Config menu / your claim list | `/claim`, or right-click with the Deed inside your claim |
-| Trust / untrust a player | `/trust <player>` · `/untrust <player>` |
-| Who's trusted | `/trustlist` |
 
-Trust commands apply to the claim you stand in, or to all your claims when you're outside them.
-Sub-areas: Land Config → Sub-areas → Sub-area Stick, then right-click two corners.
-Holding the Deed shows glowing outlines: green yours · aqua trusted · red others · gold admin · white the unclaimed chunk you stand in.
+### Claiming land
+Hold the Claim Deed and right-click to claim the chunk you're standing in. Sneak and right-click to unclaim it. If you lose your Deed, `/claim deed` gives you a new one. You can only use it once every 30 minutes (server owners can change this).
+
+Each separate claim is a property with its own name, ranks and flags. All of your properties share the same chunk allowance. By default each player can own 1 property, so new chunks need to touch the one you already have. Server owners can raise this to a max of 5, so you could have a base in one place and a shop somewhere else.
+
+Run `/claim`, or right-click with the Deed inside your claim, to open the Land Config menu. Outside your claims, `/claim` shows your claim list instead.
+
+### Trusting players
+Use `/trust <player>` and `/untrust <player>` to add or remove someone, and `/trustlist` to see who's trusted.
+
+If you run `/trust` while standing in one of your claims, the player is only trusted in that claim. If you run it outside your claims, they get trusted in all of them.
+
+### Sub-areas
+Open Land Config and go to Sub-areas to get the Sub-area Stick. Right-click two corners with the stick to mark out the area. A sub-area can be any size inside your claim.
+
+You can give a player a different rank inside a sub-area than they have in the rest of the claim. For example, someone can be a Member in your claim but have a Shop Owner rank you made just inside their shop. Stand in your claim and use:
+- `/trust <player> <subarea> <rank>` to give them that rank in the sub-area only
+- `/untrust <player> <subarea>` to take them out of the sub-area (their claim rank stays the same)
+
+Put names with spaces in quotes, like `/trust Steve "Shop 1" "Shop Owner"`. Sub-area and rank names tab-complete.
+
+### Claim outlines
+When you hold the Claim Deed, nearby claims get a glowing outline:
+- Green: your claims
+- Aqua: claims you're trusted in
+- Red: other players' claims
+- Gold: admin claims
+- White: the unclaimed chunk you're standing in
 
 ## Staff
-- `/claim deed admin` — Admin Deed (admin claims: spawn, hubs, jail)
-- `/claims info` — owner, ranks, members and flags of the claim you're in
-- `/claims detected` — machines from other mods seen in claims; set each to Owner / Allow / Deny
-- `/claims import <opac|ftb|flan|cadmus> [confirm]` — import claims (preview first; backup made)
-- `/claims reload` — reload every config file
+
+`/claim deed admin` gives you the Admin Deed. Admin claims are meant for places like spawn, hubs or a jail.
+
+`/claims info` shows the owner, ranks, members and flags of the claim you're standing in.
+
+`/claims detected` lists machines from other mods that have acted inside claims. You can set each one to Owner, Allow or Deny.
+
+`/claims import <opac|ftb|flan|cadmus>` shows a preview of what will be imported from another claim mod. Add `confirm` to run the import. A backup is made first.
+
+`/claims reload` reloads the config files.
 
 ## Permissions
-| Node | Default | For |
-|---|---|---|
-| `claims.use` | everyone | Deed, `/claim`, `/trust` |
-| `claims.limit` (number) | starter value | chunk allowance. Nexus rank entry: `claims.limit=300` |
-| `claims.admin` | OP | build and edit in admin claims automatically |
-| `claims.bypass` | OP | build and edit in any player claim automatically — senior staff only |
-| `claims.info` · `claims.reload` · `claims.detected` · `claims.import` | OP | staff commands |
-| `claims.expiry.exempt` | OP | claims never become abandoned |
 
-## Config (`config/elements_claims/`)
-- `features.toml` — Master Control File: every switch, including each rank flag
-- `claims.toml` — starter allowance, Deed and stick items, claim gap, disabled dimensions, ranks, sub-areas, outline colours
-- `limits.toml` — lag and entity limit numbers; `mods/<modid>.toml` — per-mod limits (only for installed mods)
-- `expiry.toml` — abandoned claims; `market.toml` — selling and renting
-- `detected.toml` — auto-sort results, your overrides, machines
-- `messages.toml` — every message, `&` colours
-- Claim data: `<world>/elements_claims/claims.json`
+| Node | Default | What it does |
+|---|---|---|
+| `claims.use` | Everyone | Use the Deed, `/claim` and `/trust` |
+| `claims.limit` | Starter value | Number node for the chunk allowance, set by your permission mod. Elements: Nexus example: `claims.limit=300` |
+| `claims.properties` | `properties.max` | Number node for how many properties a player can own. Capped at 5 no matter what it's set to. Elements: Nexus example: `claims.properties=3` |
+| `claims.admin` | OP | Build and edit in admin claims |
+| `claims.bypass` | OP | Build and edit in any player's claim. I'd only give this to senior staff. |
+| `claims.info`, `claims.reload`, `claims.detected`, `claims.import` | OP | Staff commands |
+| `claims.expiry.exempt` | OP | Your claims never get marked as abandoned |
+
+## Config
+
+All config files are in `config/elements_claims/`.
+
+- `features.toml` is the Master Control File. Every feature and rank flag can be switched on or off here.
+- `claims.toml` has the starter allowance, the property limit (`properties.max`, default 1, max 5), the Deed and stick items, the minimum gap between claims, disabled dimensions, ranks, sub-areas and outline colours.
+- `limits.toml` has the lag and entity limits. Per-mod limits go in `mods/<modid>.toml`, which only gets created for mods that are installed.
+- `expiry.toml` controls abandoned claims.
+- `market.toml` controls selling and renting.
+- `detected.toml` has the auto-sort results, your overrides and detected machines.
+- `messages.toml` has every player message. Use `&` for colours.
+
+Claim data is saved in `<world>/elements_claims/claims.json`.
 
 ## For other mods
-`com.tac5studios.elementsclaims.api.ClaimsAPI` — `can(player, level, pos, "build")`, `canBuild`, `canUseShops`, `claimName`, `owner`, `isTrusted`...
+
+Other mods can check claims through `com.tac5studios.elementsclaims.api.ClaimsAPI`. For example, `can(player, level, pos, "build")` checks a permission. There's also `canBuild`, `canUseShops`, `claimName`, `owner` and `isTrusted`.
 
 ## Building
-1. Elements: Vault in Maven Local (`gradlew publishToMavenLocal` in `elements-vault`, same as for Economy).
-2. `gradlew build`. The jar is `build/libs/elements_claims-<version>.jar`.
 
-Design: `docs/SPEC.md`. Research: `docs/claims-research.md`.
+1. Publish Elements: Vault to Maven Local by running `gradlew publishToMavenLocal` in the `elements-vault` project.
+2. Run `gradlew build`. The jar ends up in `build/libs/elements_claims-<version>.jar`.
+
+The full design is in `docs/SPEC.md` and the research notes are in `docs/claims-research.md`.

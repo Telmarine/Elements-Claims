@@ -13,6 +13,8 @@ public final class PlayerData {
     public boolean trustMessages = true;
     /** Last login or logout, for abandoned claims. 0 = unknown. */
     public long lastSeen;
+    /** Name the player had the last time they logged in. Used when the server's name cache doesn't have them. */
+    public String lastName;
     /** Items returned from a rented sub-area, given on next login. */
     public final List<ItemStack> pendingItems = new ArrayList<>();
 }

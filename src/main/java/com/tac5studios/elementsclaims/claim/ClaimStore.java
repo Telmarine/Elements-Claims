@@ -275,6 +275,7 @@ public final class ClaimStore {
                     if (po.has("titles")) d.titles = po.get("titles").getAsBoolean();
                     if (po.has("trust_messages")) d.trustMessages = po.get("trust_messages").getAsBoolean();
                     if (po.has("last_seen")) d.lastSeen = po.get("last_seen").getAsLong();
+                    if (po.has("name")) d.lastName = po.get("name").getAsString();
                     if (po.has("pending_items")) {
                         for (JsonElement ie : po.getAsJsonArray("pending_items")) {
                             ItemStack st = itemFromJson(ie.getAsString());
@@ -300,6 +301,12 @@ public final class ClaimStore {
                     bad++;
                     ElementsClaims.LOGGER.error("[Claims] Skipped a claim that could not be read: {}", ex.toString());
                 }
+            }
+            int fixed = 0;
+            for (Claim c : CLAIMS.values()) if (Manage.fixMissingRanks(c)) fixed++;
+            if (fixed > 0) {
+                ElementsClaims.LOGGER.info("[Claims] Fixed ranks that no longer exist in {} claims.", fixed);
+                dirty = true;
             }
             ElementsClaims.LOGGER.info("[Claims] Loaded {} claims{}.", CLAIMS.size(), bad > 0 ? " (" + bad + " skipped)" : "");
         } catch (Exception ex) {
@@ -357,6 +364,7 @@ public final class ClaimStore {
             po.addProperty("titles", d.titles);
             po.addProperty("trust_messages", d.trustMessages);
             po.addProperty("last_seen", d.lastSeen);
+            if (d.lastName != null) po.addProperty("name", d.lastName);
             if (!d.pendingItems.isEmpty()) {
                 JsonArray items = new JsonArray();
                 for (ItemStack st : d.pendingItems) {

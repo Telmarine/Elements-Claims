@@ -28,7 +28,10 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.StringJoiner;
 
 /**
@@ -133,10 +136,22 @@ public final class ClaimCommands {
             Msg.send(p, "deed.already_have");
             return 0;
         }
+        long now = System.currentTimeMillis();
+        long wait = ClaimsConfig.deedCooldownMinutes * 60_000L;
+        Long last = DEED_USED.get(p.getUUID());
+        if (wait > 0 && last != null && now - last < wait && !Perm.has(p, Perm.ADMIN)) {
+            long left = (wait - (now - last) + 59_999) / 60_000;
+            Msg.send(p, "deed.cooldown", "minutes", left);
+            return 0;
+        }
         Deed.give(p);
+        DEED_USED.put(p.getUUID(), now);
         Msg.send(p, "deed.given");
         return 1;
     }
+
+    /** Last time each player got a Deed from /claim deed. Resets on restart. */
+    private static final Map<UUID, Long> DEED_USED = new HashMap<>();
 
     private static int info(CommandContext<CommandSourceStack> ctx) {
         ServerPlayer p = ctx.getSource().getPlayer();

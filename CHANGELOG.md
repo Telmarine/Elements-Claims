@@ -2,6 +2,25 @@
 
 ## 1.0.0 (in development)
 
+### Sub-area trust commands
+- Added `/trust <player> <subarea> <rank>` and `/untrust <player> <subarea>`. They set a player's rank inside one sub-area only, so someone can be a Member in the claim and have a custom Shop Owner rank just inside their shop.
+- You can only give ranks below your own, same as in the menu. Renters have to be removed through the rental instead.
+
+### Fixes from testing
+- Frosted ice from Frost Walker now always melts, even in claims where Decay & Melt is off.
+- `/claim deed` has a 30 minute cooldown so it can't be spammed. Change it with `deed.cooldown_minutes` in claims.toml (0 turns it off). Staff with `claims.admin` skip it.
+- Sub-area names now get the same cleanup as claim names: trimmed, colour codes stripped and cut to the max length.
+- Deleting a rank now also moves sub-area members and the sub-area rent rank to the next rank down. Any old data pointing at a deleted rank gets fixed when the server starts.
+- Claim outlines now only draw 2 chunks out from the player (was 3, could be set up to 8), so they're easier on lower-end PCs. `borders.radius` can be 1 or 2, and `borders.max_segments` is capped at 300.
+- Claim owners who aren't in the server's name cache used to show up as part of their UUID. Claims now remembers each player's name when they log in (and from OPAC imports) and uses that instead.
+- Only the vanilla painting counts toward the painting limit. Hanging items from other mods were being counted as paintings.
+
+### Property limit
+- Added a limit on how many properties a player can own. A property is a separate claim with its own name, like a base and a shop in different spots. They all share the player's chunk allowance. The default is 1, and it can't go above 5.
+- Server owners set it with `properties.max` in claims.toml. Ranks can change it with the `claims.properties` number node, which is capped at 5 too.
+- It can be turned off with the `property_limit` switch in features.toml. It only does anything while `merge` is on, since with merge off every chunk is its own claim.
+- Claiming a chunk next to one of your claims still works when you're at the limit. Buying a claim through the market counts as a new property.
+
 ### Phase 1 — core
 - **Claim Deed** - a paper with a hidden tag (plain paper does nothing), never used up. Right-click claims the chunk you stand in; sneak + right-click unclaims it; right-click inside your own claim shows its info. The lore shows the counter live ("Chunks claimed: 37 / 300"). `/claim deed` gives a new one if lost; optional Deed on first join (`deed_on_first_join`, off by default).
 - **Chunk allowance** - starter value in claims.toml (default 100), raised by the `claims.limit` number node (Nexus: `claims.limit=300`). Rank changes show straight away, offline players included. Unclaiming gives the chunk back.

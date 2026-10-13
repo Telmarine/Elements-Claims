@@ -3,6 +3,7 @@ package com.tac5studios.elementsclaims.subarea;
 import com.tac5studios.elementsclaims.claim.Claim;
 import com.tac5studios.elementsclaims.claim.ClaimStore;
 import com.tac5studios.elementsclaims.claim.Claiming;
+import com.tac5studios.elementsclaims.claim.Manage;
 import com.tac5studios.elementsclaims.claim.Rank;
 import com.tac5studios.elementsclaims.claim.SubArea;
 import com.tac5studios.elementsclaims.config.ClaimsConfig;
@@ -50,8 +51,9 @@ public final class SubAreaMenu extends ClaimMenu {
 
         set(10, Button.of(Icons.named(Items.NAME_TAG, Msg.menu("subarea.rename"), List.of(Msg.menu("menu.rename_info", "max", ClaimsConfig.claimNameMax))), (p, c) ->
                 TextInput.ask(p, Msg.menu("subarea.rename_title"), area.name(), (who, text) -> {
-                    if (alive() && !text.isBlank()) {
-                        area.rename(text.length() > ClaimsConfig.claimNameMax ? text.substring(0, ClaimsConfig.claimNameMax) : text);
+                    String name = Manage.clip(text, ClaimsConfig.claimNameMax);
+                    if (alive() && !name.isBlank()) {
+                        area.rename(name);
                         ClaimStore.markDirty();
                     }
                     new SubAreaMenu(claim, area).open(who);

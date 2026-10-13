@@ -129,12 +129,6 @@ Notes:
 - Towny is CC BY-NC-ND: ideas only.
 - Ideas, mechanics and flag *concepts* are not protected; copying code, config layouts word-for-word or names is what to avoid.
 
-## 7. Tenko context
-
-- Tenko runs OPAC 0.32.7 today: per-rank claim limits through Nexus number permissions (`openpartiesandclaims.xaero.pac_max_claims`), server claims at spawn and the RS hubs, RS worlds unclaimable, crate exception groups, claim names shown in the Nexus side panel.
-- Anything Elements: Claims replaces must cover those, and an OPAC importer would let Tenko switch without players re-claiming.
-- Nexus already has: the permission handler (number nodes), side panel location (reads OPAC/FTB Chunks via reflection), waystone per-dimension rules, overlap guard — a claims mod should plug into the same pieces.
-
 ---
 
 ## Sources

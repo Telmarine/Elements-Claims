@@ -58,6 +58,7 @@ public final class Expiry {
         if (!(e.getEntity() instanceof ServerPlayer p)) return;
         PlayerData d = ClaimStore.player(p.getUUID());
         d.lastSeen = System.currentTimeMillis();
+        d.lastName = p.getGameProfile().getName();
         if (!d.pendingItems.isEmpty()) {
             List<ItemStack> items = new ArrayList<>(d.pendingItems);
             d.pendingItems.clear();

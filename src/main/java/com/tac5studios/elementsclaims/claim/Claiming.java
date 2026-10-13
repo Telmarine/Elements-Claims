@@ -29,6 +29,37 @@ public final class Claiming {
         return v >= 0 ? v : ClaimsConfig.starterAllowance;
     }
 
+    // ---------- properties ----------
+
+    /** How many separate claims this player may have: claims.properties node, else properties.max. Never above 5. */
+    public static int maxProperties(ServerPlayer player) {
+        int v = Perm.properties(player);
+        return ClaimsConfig.clampProperties(v >= 0 ? v : ClaimsConfig.maxProperties);
+    }
+
+    /** Separate claims this player owns right now. Admin claims and forfeited claims don't count. */
+    public static int propertiesUsed(UUID player) {
+        int n = 0;
+        for (Claim c : ClaimStore.ownedBy(player)) if (!c.forfeited) n++;
+        return n;
+    }
+
+    /** True when the property limit is in use (it needs merging on, or every chunk would be its own claim). */
+    public static boolean propertyLimitOn() {
+        return Features.on(Features.CLAIM_PROPERTY_LIMIT) && Features.on(Features.CLAIM_MERGE);
+    }
+
+    /** True when claiming this chunk would join one of the player's existing claims instead of starting a new one. */
+    private static boolean joinsOwnClaim(String dim, ChunkPos pos, UUID player) {
+        for (ChunkPos n : new ChunkPos[]{
+                new ChunkPos(pos.x + 1, pos.z), new ChunkPos(pos.x - 1, pos.z),
+                new ChunkPos(pos.x, pos.z + 1), new ChunkPos(pos.x, pos.z - 1)}) {
+            Claim c = ClaimStore.at(dim, n);
+            if (c != null && !c.isAdmin() && c.isOwner(player)) return true;
+        }
+        return false;
+    }
+
     // ---------- claim ----------
 
     /** Claim the chunk the player stands in. Messages the player either way. Returns true when claimed. */
@@ -55,6 +86,14 @@ public final class Claiming {
         if (used >= max) {
             Msg.send(player, "claim.full", "used", used, "max", max);
             return false;
+        }
+        if (propertyLimitOn() && !joinsOwnClaim(dim, pos, id)) {
+            int owned = propertiesUsed(id);
+            int maxProperties = maxProperties(player);
+            if (owned >= maxProperties) {
+                Msg.send(player, "claim.properties_full", "used", owned, "max", maxProperties);
+                return false;
+            }
         }
         if (com.tac5studios.elementsclaims.integration.Integrations.inColony(player.level(), player.blockPosition())) {
             Msg.send(player, "claim.colony");
@@ -145,6 +184,8 @@ public final class Claiming {
             GameProfile p = server.getProfileCache().get(id).orElse(null);
             if (p != null && p.getName() != null) return p.getName();
         }
+        PlayerData d = ClaimStore.players().get(id);
+        if (d != null && d.lastName != null) return d.lastName;
         return id.toString().substring(0, 8);
     }
 }

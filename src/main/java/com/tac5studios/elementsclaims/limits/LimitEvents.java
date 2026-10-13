@@ -8,7 +8,6 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobSpawnType;
 import net.minecraft.world.item.ArmorStandItem;
 import net.minecraft.world.item.BoatItem;
-import net.minecraft.world.item.HangingEntityItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -93,7 +92,8 @@ public final class LimitEvents {
         if (item instanceof ArmorStandItem) return EntityType.ARMOR_STAND;
         if (item == Items.ITEM_FRAME) return EntityType.ITEM_FRAME;
         if (item == Items.GLOW_ITEM_FRAME) return EntityType.GLOW_ITEM_FRAME;
-        if (item instanceof HangingEntityItem) return EntityType.PAINTING;
+        // Only the vanilla painting. Hanging items from other mods aren't paintings.
+        if (item == Items.PAINTING) return EntityType.PAINTING;
         if (item instanceof MinecartItem) return EntityType.MINECART;
         if (item instanceof BoatItem) return EntityType.BOAT;
         return null;

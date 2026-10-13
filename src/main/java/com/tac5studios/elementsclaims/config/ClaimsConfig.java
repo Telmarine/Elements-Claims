@@ -23,7 +23,11 @@ public final class ClaimsConfig {
     private static final TomlFile FILE = new TomlFile("claims.toml");
 
     public static int starterAllowance = 100;
+    /** Hard cap on separate claims per player. Neither the config nor a permission node can go above this. */
+    public static final int PROPERTIES_HARD_MAX = 5;
+    public static int maxProperties = 1;
     public static Item deedItem = Items.PAPER;
+    public static int deedCooldownMinutes = 30;
     public static Item stickItem = Items.STICK;
     public static int maxSubAreas = 20;
     public static int minDistance = 2;
@@ -33,7 +37,7 @@ public final class ClaimsConfig {
     public static int maxRanks = 10;
     public static int rankNameMax = 16;
 
-    public static int borderRadius = 3;
+    public static int borderRadius = 2;
     public static int borderMaxSegments = 300;
     public static Block borderBlock = Blocks.GLASS;
     public static int colorOwn, colorTrusted, colorOther, colorAdmin, colorSubArea, colorPreview;
@@ -48,7 +52,9 @@ public final class ClaimsConfig {
     public static void load() {
         FILE.load();
         starterAllowance = Math.max(0, FILE.num("allowance.starter", 100));
+        maxProperties = clampProperties(FILE.num("properties.max", 1));
         deedItem = item(FILE.str("deed.item", "minecraft:paper"), Items.PAPER);
+        deedCooldownMinutes = Math.max(0, FILE.num("deed.cooldown_minutes", 30));
         stickItem = item(FILE.str("sub_areas.item", "minecraft:stick"), Items.STICK);
         maxSubAreas = Math.max(1, FILE.num("sub_areas.max_per_claim", 20));
         minDistance = Math.max(0, FILE.num("distance.chunks", 2));
@@ -58,8 +64,8 @@ public final class ClaimsConfig {
         maxRanks = Math.max(3, Math.min(20, FILE.num("ranks.max", 10)));
         rankNameMax = Math.max(4, Math.min(32, FILE.num("ranks.name_max_length", 16)));
 
-        borderRadius = Math.max(1, Math.min(8, FILE.num("borders.radius", 3)));
-        borderMaxSegments = Math.max(16, FILE.num("borders.max_segments", 300));
+        borderRadius = Math.max(1, Math.min(2, FILE.num("borders.radius", 2)));
+        borderMaxSegments = Math.max(16, Math.min(300, FILE.num("borders.max_segments", 300)));
         borderBlock = block(FILE.str("borders.block", "minecraft:glass"), Blocks.GLASS);
         colorOwn = color(FILE.str("borders.colors.own", "#55FF55"), 0x55FF55);
         colorTrusted = color(FILE.str("borders.colors.trusted", "#55FFFF"), 0x55FFFF);
@@ -67,6 +73,11 @@ public final class ClaimsConfig {
         colorAdmin = color(FILE.str("borders.colors.admin", "#FFAA00"), 0xFFAA00);
         colorSubArea = color(FILE.str("borders.colors.sub_area", "#FFFF55"), 0xFFFF55);
         colorPreview = color(FILE.str("borders.colors.preview", "#FFFFFF"), 0xFFFFFF);
+    }
+
+    /** Keeps a property count between 1 and the hard cap of 5. */
+    public static int clampProperties(int n) {
+        return Math.max(1, Math.min(PROPERTIES_HARD_MAX, n));
     }
 
     public static boolean dimensionAllowed(String dimension) {

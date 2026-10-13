@@ -130,6 +130,14 @@ public final class Market {
             Msg.send(p, "market.too_big", "chunks", c.chunks().size(), "used", used, "max", max);
             return;
         }
+        if (Claiming.propertyLimitOn()) {
+            int owned = Claiming.propertiesUsed(p.getUUID());
+            int maxProperties = Claiming.maxProperties(p);
+            if (owned >= maxProperties) {
+                Msg.send(p, "claim.properties_full", "used", owned, "max", maxProperties);
+                return;
+            }
+        }
         long price = c.salePrice;
         ConfirmMenu.ask(p, Icons.named(Items.FILLED_MAP, Msg.menu("market.buy_claim_title", "claim", c.name())),
                 List.of(Msg.menu("market.price", "price", format(price)), Msg.menu("market.chunks", "chunks", c.chunks().size())),

@@ -25,7 +25,7 @@ public final class Features {
     public static ModConfigSpec SPEC;
 
     // Claiming
-    public static BooleanValue CLAIMS, CLAIM_DEED, CLAIM_UNCLAIM, CLAIM_MERGE, CLAIM_MIN_DISTANCE, CLAIM_DEED_FIRST_JOIN;
+    public static BooleanValue CLAIMS, CLAIM_DEED, CLAIM_UNCLAIM, CLAIM_MERGE, CLAIM_MIN_DISTANCE, CLAIM_DEED_FIRST_JOIN, CLAIM_PROPERTY_LIMIT;
 
     // Trust
     public static BooleanValue TRUST, TRUST_OFFLINE;
@@ -89,6 +89,7 @@ public final class Features {
         CLAIM_MERGE = sw(b, "merge", true, "A chunk claimed next to your own claim joins it. Off = every chunk starts a new claim.");
         CLAIM_MIN_DISTANCE = sw(b, "min_distance", false, "Keep a gap between different players' claims. Gap size: distance.chunks in claims.toml.");
         CLAIM_DEED_FIRST_JOIN = sw(b, "deed_on_first_join", false, "Give every new player a Claim Deed the first time they join.");
+        CLAIM_PROPERTY_LIMIT = sw(b, "property_limit", true, "Limit how many properties (separate named claims) each player can own. Number: properties.max in claims.toml (1-5). Only used while merge is on.");
         b.pop();
 
         b.comment("Trusting players with /trust and /untrust.").push("trust");

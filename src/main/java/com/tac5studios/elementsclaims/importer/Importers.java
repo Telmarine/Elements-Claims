@@ -171,6 +171,7 @@ public final class Importers {
             Config main = admin ? toml(world(server).resolve("serverconfig").resolve("openpartiesandclaims-server-claim-config.toml"))
                     : toml(base.resolve("player-configs").resolve(owner + ".toml"));
             String username = root.getString("username");
+            if (!admin && !username.isEmpty() && ClaimStore.player(owner).lastName == null) ClaimStore.player(owner).lastName = username;
             String mainName = str(main, "playerConfig.claims.name");
             Set<UUID> trusted = new java.util.LinkedHashSet<>();
             if (!admin) {

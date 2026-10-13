@@ -63,6 +63,10 @@ public final class Perm {
     public static final PermissionNode<Integer> LIMIT = new PermissionNode<>("claims", "limit", PermissionTypes.INTEGER,
             (player, uuid, ctx) -> -1);
 
+    /** Separate claims a player can have. -1 (unset) = properties.max from claims.toml. Capped at 5. Nexus: "claims.properties=3". */
+    public static final PermissionNode<Integer> PROPERTIES = new PermissionNode<>("claims", "properties", PermissionTypes.INTEGER,
+            (player, uuid, ctx) -> -1);
+
     private Perm() {}
 
     private static String node(String path, Who who, BooleanSupplier gate) {
@@ -79,6 +83,7 @@ public final class Perm {
         List<PermissionNode<?>> on = new ArrayList<>();
         for (Entry e : NODES.values()) if (e.gate().getAsBoolean()) on.add(e.node());
         on.add(LIMIT);
+        on.add(PROPERTIES);
         event.addNodes(on.toArray(new PermissionNode<?>[0]));
         ElementsClaims.LOGGER.info("[Claims] {} permission nodes registered.", on.size());
     }
@@ -120,6 +125,16 @@ public final class Perm {
     public static int limit(ServerPlayer player) {
         try {
             Integer v = PermissionAPI.getPermission(player, LIMIT);
+            return v == null ? -1 : v;
+        } catch (RuntimeException ex) {
+            return -1;
+        }
+    }
+
+    /** The claims.properties value for an online player, or -1 when nothing sets it. */
+    public static int properties(ServerPlayer player) {
+        try {
+            Integer v = PermissionAPI.getPermission(player, PROPERTIES);
             return v == null ? -1 : v;
         } catch (RuntimeException ex) {
             return -1;

@@ -174,8 +174,43 @@ public final class Manage {
         for (Map.Entry<UUID, String> e : c.members().entrySet()) {
             if (e.getValue().equals(r.id())) e.setValue(to.id());
         }
+        for (SubArea a : c.subAreas()) {
+            for (Map.Entry<UUID, String> e : a.members().entrySet()) {
+                if (e.getValue().equals(r.id())) e.setValue(to.id());
+            }
+            if (r.id().equals(a.rentRank)) a.rentRank = to.id();
+        }
         ClaimStore.markDirty();
         return true;
+    }
+
+    /**
+     * Points any member or sub-area that uses a rank that no longer exists at the lowest trusted rank.
+     * Run once when the claims load, to clean up data saved before deleteRank handled sub-areas.
+     * Returns true when something was changed.
+     */
+    public static boolean fixMissingRanks(Claim c) {
+        boolean changed = false;
+        String fallback = c.lowestTrusted().id();
+        for (Map.Entry<UUID, String> e : c.members().entrySet()) {
+            if (c.rank(e.getValue()) == null) {
+                e.setValue(fallback);
+                changed = true;
+            }
+        }
+        for (SubArea a : c.subAreas()) {
+            for (Map.Entry<UUID, String> e : a.members().entrySet()) {
+                if (c.rank(e.getValue()) == null) {
+                    e.setValue(fallback);
+                    changed = true;
+                }
+            }
+            if (c.rank(a.rentRank) == null) {
+                a.rentRank = fallback;
+                changed = true;
+            }
+        }
+        return changed;
     }
 
     /** Move a rank to a new position. Owner stays first and Visitor last. */
@@ -214,7 +249,8 @@ public final class Manage {
         return true;
     }
 
-    private static String clip(String s, int max) {
+    /** Trims a name, strips & and § colour codes and cuts it to the max length. */
+    public static String clip(String s, int max) {
         s = s.trim().replace('&', ' ').replace('§', ' ');
         return s.length() > max ? s.substring(0, max) : s;
     }

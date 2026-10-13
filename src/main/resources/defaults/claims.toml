@@ -11,10 +11,22 @@
 # (Elements: Nexus rank entry: "claims.limit=300").
 starter = 100
 
+[properties]
+# How many properties each player can own. A property is a separate claim with
+# its own name, ranks and flags (for example a base and a shop somewhere else).
+# Every property shares the player's chunk allowance.
+# 1-5. Anything above 5 is treated as 5.
+# Ranks can change it with the number node claims.properties, also capped at 5.
+# Only used while property_limit and merge are on in features.toml.
+max = 1
+
 [deed]
 # The item the Claim Deed is made from. Plain items of this kind do nothing;
 # only Deeds (which carry a hidden tag) claim land.
 item = "minecraft:paper"
+# Minutes a player has to wait between /claim deed uses. 0 = no wait.
+# Staff with claims.admin skip the wait.
+cooldown_minutes = 30
 
 [sub_areas]
 # The item the Sub-area Stick is made from (plain sticks do nothing).
@@ -30,7 +42,7 @@ chunks = 2
 [claims]
 # Name of a new claim. {player} = the owner's name.
 default_name = "{player}'s Claim"
-# Dimensions where nobody can claim, e.g. ["minecraft:the_end", "tenko:spawn"]
+# Dimensions where nobody can claim, e.g. ["minecraft:the_end", "mymod:spawn"]
 disabled_dimensions = []
 # Longest claim name allowed (characters).
 name_max_length = 32
@@ -42,9 +54,10 @@ max = 10
 name_max_length = 16
 
 [borders]
-# How far (in chunks) around the player outlines are drawn. 1-8.
-radius = 3
-# Most outline pieces sent to one player at once.
+# How far (in chunks) around the player outlines are drawn. 1-2.
+# Kept small so the outlines stay light on lower-end PCs.
+radius = 2
+# Most outline pieces sent to one player at once. 16-300.
 max_segments = 300
 # Block the outline bars are made of. The glow colour is drawn around it.
 block = "minecraft:glass"

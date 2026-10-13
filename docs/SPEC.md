@@ -56,9 +56,9 @@ Known-mod hooks switch on only when that mod is installed (detected by mod ID at
 - Machines inside a claim **always run** — contraptions, deployers, drills, harvesters, ploughs, mechanical arms, trains, schematicannon. The claim never stops them.
 - The claim only blocks griefing by untrusted players: breaking, wrenching, configuring, or taking items from machines.
 - **Blocked:** a contraption or machine placed outside the claim by an untrusted player that drills, deploys or harvests across the border into the claim.
-- Create addons on the stack follow the same rule: Copycats, Create Deco, Bits 'n' Bobs, Contraption Terminals, Rechiseled Create, Sophisticated Backpacks Create Integration.
+- Supported Create addons follow the same rule: Copycats, Create Deco, Bits 'n' Bobs, Contraption Terminals, Rechiseled Create, Sophisticated Backpacks Create Integration.
 
-### Tenko stack
+### Supported mods
 | Mod | Hook |
 |---|---|
 | Sophisticated Backpacks / Core | Register our check with its public hook `WorldHelper.addAdditionalInteractionCheck` |
@@ -80,7 +80,7 @@ Known-mod hooks switch on only when that mod is installed (detected by mod ID at
 | Elements: Armor Stands | Switch its protection check from OPAC/FTB reflection to the Claims API |
 | Xaero's Minimap / World Map | Showing our claims needs research (Xaero's claim display is built for OPAC) |
 
-### TMC Modpack 1.2 additions
+### More supported mods
 | Mod | Hook |
 |---|---|
 | Carry On | Blocks need Build/Containers; mobs need the matching Attack flag; shop stock, crate baskets, Easy NPCs and waystones/warp plates can never be picked up in claims |
@@ -92,7 +92,7 @@ Known-mod hooks switch on only when that mod is installed (detected by mod ID at
 | Friends & Foes | Its mobs follow Mob Griefing and spawning flags; copper golem button presses checked (verify in the jar) |
 | Dye The World, Polymorph, AppleSkin, Create Better FPS | No hook needed |
 
-### Beyond the stack
+### Other integrations
 - Web maps: BlueMap, squaremap, Dynmap (server-side).
 - JourneyMap (server-side API, as Flan does).
 - MineColonies — no claims over colonies.
@@ -100,14 +100,14 @@ Known-mod hooks switch on only when that mod is installed (detected by mod ID at
 - **Public Elements: Claims API** ("can this player do X here?") for other mods and the Elements mods — NeoForge has no shared protection API.
 
 ## 7. Migration (decided)
-- Importers for every claim mod available on 1.21.1 so existing claims carry over intact: **OPAC** (first — Tenko), **FTB Chunks**, **Flan**, **Cadmus / Odyssey Claims**, plus Claim My Land if worth it.
+- Importers for every claim mod available on 1.21.1 so existing claims carry over intact: **OPAC** (first), **FTB Chunks**, **Flan**, **Cadmus / Odyssey Claims**, plus Claim My Land if worth it.
 - OPAC parties → members at the default trusted rank; server claims → admin claims; claim names and colours kept.
 
 ## 8. Server owner controls (decided, details open)
 - Claim allowance: set by the server owner only. No earning, no penalties.
 - Rank bonuses: server owner config.
 - Coloured claim borders: glowing outlines (vanilla display entities, sent per player) shown when holding the Deed or stick and when a chunk is claimed. Colours, changeable by the server owner: own claims green · trusted claims aqua · other players' claims red · admin claims gold · sub-areas yellow · white (temporary preview): the unclaimed chunk you're standing in while holding the Deed, and a sub-area being drawn with the stick before the second corner. Once claimed or finished, the outline switches to its normal colour. A right-click with the Deed claims straight away; unclaim to undo.
-- Starter claim = the starting chunk allowance every new player gets (e.g. 100, like Tenko's Newcomer rank). Set by the server owner in config; rank number nodes raise it from there.
+- Starter claim = the starting chunk allowance every new player gets (e.g. 100). Set by the server owner in config; rank number nodes raise it from there.
 - Minimum distance between claims: on/off switch for the server owner.
 - Hostile mob spawns: the land owner allows or blocks them in their claim (Monster Spawning land flag). Outside claims, mobs spawn normally under the server's own spawn limits — the claim mod doesn't touch them.
 - Entity limits: optional, switched on and set by the server owner — per claim and/or server-wide. Categories include pets and passive mobs (farm animals, animal farms) as well as monsters, villagers and dropped items. Over a limit, breeding, spawn eggs and spawners stop adding to it and the land owner gets a message; nothing already there is killed. Easy NPCs never count.
@@ -129,22 +129,22 @@ Known-mod hooks switch on only when that mod is installed (detected by mod ID at
 - Limits only stop new placements — Create machines and contraptions already placed always keep running.
 
 ## 8c. Admin claims (decided)
-- For spawn and any area the server owner doesn't want destroyed (spawn, RS hubs, jail…).
+- For spawn and any area the server owner doesn't want destroyed (spawn, hubs, jail…).
 - Don't count against any allowance; no size limit; never expire.
 - An admin claim always wins: players can never claim inside or overlapping one (no exceptions).
 - Created by staff with an **Admin Deed** (`/claim deed admin`, permission-gated) — right-click claims the chunk as an admin claim.
 - **Staff with the admin permission can build, break and edit everything in admin claims automatically** — no command or mode switch needed to edit (fixes OPAC's biggest annoyance).
 - Same Land Flags / Ranks menus, plus admin-only extras: keep inventory, no hunger, block entry / exit, enter / leave commands.
 - **Visitor defaults in admin claims — on by default, still toggleable in the admin menu:** ender chests and community chests, crates, NPC shops (Easy NPC traders, shop NPCs).
-- Tenko: the OPAC importer turns today's server claims (spawn, RS hubs) into admin claims.
+- The OPAC importer turns existing OPAC server claims into admin claims.
 
 ## 9. Claiming method (decided)
-- **Claim Deed** — a paper item with a hidden tag (plain paper does nothing). Never consumed; `/claim deed` gives a new one if lost. Handed out by Natsubashi's welcome, `/claim deed`, or a server-owner config option.
+- **Claim Deed** — a paper item with a hidden tag (plain paper does nothing). Never consumed; `/claim deed` gives a new one if lost. Handed out on first join (optional), `/claim deed`, or a server-owner config option.
   - Right-click: claim the chunk you're standing in (shows its border).
   - Sneak + right-click: unclaim that chunk.
   - Right-click in the air while looking at your own claim: open the Land Config menu.
 - **Claim counter** — kept on the player (not the item); the Deed's lore shows it live, e.g. "Chunks claimed: 37 / 300".
-  - Allowance comes from Nexus rank number nodes (e.g. Newcomer 100, +100 per rank) or server config.
+  - Allowance comes from Nexus rank number nodes (e.g. 100 base, +100 per rank) or server config.
   - Unclaiming gives the chunk back; a full counter blocks new claims with a clear message.
   - Rank changes apply straight away, offline players included.
 - **Stick** — sub-areas: click two corners inside your own chunks for a block-precise sub-area (shop plots, rented rooms, farms with their own rules). Sub-areas don't use chunk claims.
@@ -154,6 +154,7 @@ Known-mod hooks switch on only when that mod is installed (detected by mod ID at
 
 **Player commands** (minimum — everything else is in the menu)
 - `/trust <player>` · `/untrust <player>` · `/trustlist`
+- `/trust <player> <subarea> <rank>` · `/untrust <player> <subarea>` — rank inside one sub-area only (claim rank unchanged)
 - `/claim` — opens Land Config for the claim you're in (or your claim list)
 - `/claim deed` — new Claim Deed if lost
 
@@ -169,13 +170,14 @@ Known-mod hooks switch on only when that mod is installed (detected by mod ID at
 |---|---|---|
 | `claims.use` | everyone | Deed, stick, menu, /trust |
 | `claims.limit` | starter value | chunk allowance (number node; Nexus rank entry `claims.limit=300`) |
+| `claims.properties` | `properties.max` (1) | properties (separate named claims) per player (number node, hard cap 5; `property_limit` switch in features.toml) |
 | `claims.admin` | OP | Admin Deed; build and edit in admin claims automatically |
 | `claims.bypass` | OP | build and edit in any player claim automatically (no toggle), ignore lag limits — give only to senior staff ranks |
 | `claims.detected` · `claims.import` · `claims.reload` | OP | staff commands |
 
 **Config files** (`config/elements_claims/`)
 - `features.toml` — Master Control File: switches for every feature, flag, lag limit, selling (off), renting (off), minimum distance, entity limits, expiry, importers; per-mod toggles appear only for detected mods
-- `claims.toml` — starter allowance, Deed / stick items, minimum distance value, border colours, admin claim defaults
+- `claims.toml` — starter allowance, property limit (`properties.max`, 1-5), Deed / stick items, minimum distance value, border colours, admin claim defaults
 - `limits.toml` — lag and entity limit numbers
 - `expiry.toml` — days inactive, grace period, exemptions
 - `market.toml` — sale / rent settings
@@ -183,8 +185,6 @@ Known-mod hooks switch on only when that mod is installed (detected by mod ID at
 - `detected.toml` — auto-sort results + server owner overrides
 - `messages.toml` — all player-facing messages, `&` colours
 - Claim data lives in the world folder (like the Nexus store).
-
-**Tenko setup (when Claims goes live):** staff ranks become Owner / Sr Admin / Admin / Sr Mod / Mod / Helper (new Nexus ranks: Sr Admin, Sr Mod). `claims.bypass` and `claims.admin` go to Owner, Sr Admin, Admin and Sr Mod only — not Mod or Helper.
 
 ## 11. Still to decide (open)
 - Nothing open
@@ -196,12 +196,12 @@ Known-mod hooks switch on only when that mod is installed (detected by mod ID at
 4. Admin claims — Admin Deed, automatic staff editing, admin extras, Visitor defaults. **(built)**
 5. Auto-detect — startup auto-sort, live machine detection, `detected.toml`, `/claims detected`. **(built)**
 6. Sub-areas (stick). **(built)**
-7. Integrations — Create rule, stack and 1.2 hooks, public API, Nexus and Armor Stands. **(built)**
+7. Integrations — Create rule, mod hooks, public API, Nexus and Armor Stands. **(built)**
 8. Lag and entity limits; per-mod config for detected mods. **(built)**
 9. Expiry, selling and renting. **(built)**
 10. Importers (OPAC first, then FTB Chunks, Flan, Cadmus); map integrations. **(built)**
 
 ## 13. Build notes
-- Integrations researched from each mod's 1.21.1 source (`docs/` research notes kept in the cloud session). Mods without events (Create contraptions, Crystal Tools extras, Tom's connectors) are handled with optional mixins that do nothing when the mod is missing.
+- Integrations researched from each mod's 1.21.1 source. Mods without events (Create contraptions, Crystal Tools extras, Tom's connectors) are handled with optional mixins that do nothing when the mod is missing.
 - Nexus (side panel claim name, waystone rules, `/sethome`), Elements: Armor Stands and Elements: Economy (Shops: Create) need a small update in those mods to call `ClaimsAPI`.
 - Not possible / not included: JourneyMap overlays (needs JourneyMap's API library to build), Xaero's maps (client mod only), Dynmap (no NeoForge 1.21.1 build).
