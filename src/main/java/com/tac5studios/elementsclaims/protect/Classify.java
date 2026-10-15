@@ -8,7 +8,6 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.OwnableEntity;
 import net.minecraft.world.entity.Saddleable;
 import net.minecraft.world.entity.animal.Animal;
-import net.minecraft.world.entity.animal.horse.AbstractHorse;
 import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.decoration.HangingEntity;
@@ -52,7 +51,13 @@ import net.neoforged.neoforge.capabilities.Capabilities;
 import com.tac5studios.elementsclaims.detect.AutoSort;
 import com.tac5studios.elementsclaims.integration.Integrations;
 
-import java.lang.reflect.Method;
+import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.ClassVisitor;
+import org.objectweb.asm.MethodVisitor;
+import org.objectweb.asm.Opcodes;
+
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.IdentityHashMap;
 import java.util.Map;
 
@@ -85,14 +90,41 @@ public final class Classify {
     private static boolean declares(Class<?> c, Class<?> stop, String... names) {
         try {
             for (Class<?> k = c; k != null && k != stop && k != Object.class; k = k.getSuperclass()) {
-                for (Method m : k.getDeclaredMethods()) {
-                    for (String n : names) if (m.getName().equals(n)) return true;
-                }
+                if (declaresIn(k, names)) return true;
             }
         } catch (Throwable t) {
             return true; // can't tell: treat it as usable, so it stays protected
         }
         return false;
+    }
+
+    /**
+     * Reads the method names straight from the class file. Reflection (getDeclaredMethods) loads every type
+     * used in the class's methods, and on a server that hits client-only classes, which NeoForge logs as
+     * RuntimeDistCleaner errors for every block or item that has client code.
+     */
+    private static boolean declaresIn(Class<?> k, String[] names) throws IOException {
+        String file = k.getName().replace('.', '/') + ".class";
+        ClassLoader loader = k.getClassLoader();
+        try (InputStream in = loader == null ? ClassLoader.getSystemResourceAsStream(file) : loader.getResourceAsStream(file)) {
+            if (in == null) throw new IOException("class file not found: " + file);
+            boolean[] found = {false};
+            new ClassReader(in).accept(new ClassVisitor(Opcodes.ASM9) {
+                @Override
+                public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
+                    if (!found[0]) {
+                        for (String n : names) {
+                            if (n.equals(name)) {
+                                found[0] = true;
+                                break;
+                            }
+                        }
+                    }
+                    return null;
+                }
+            }, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
+            return found[0];
+        }
     }
 
     /** Right-clicking this block needs which flag? null = everyone may. */
@@ -145,21 +177,23 @@ public final class Classify {
         String ov = AutoSort.entityOverride(t.getType());
         if (ov != null) return AutoSort.NONE.equals(ov) ? null : RankFlag.byKey(ov);
         if (Integrations.alwaysTalkable(t, hand)) return null;
-        if (t instanceof AbstractVillager) return RankFlag.TRADING;
-        if (t instanceof ContainerEntity) return RankFlag.CONTAINERS;
-        if (t instanceof LeashFenceKnotEntity) return RankFlag.INTERACT;
-        if (t instanceof HangingEntity || t instanceof ArmorStand) return RankFlag.BUILD;
-        if (t instanceof Boat || t instanceof AbstractMinecart) return RankFlag.VEHICLES;
-        if (t instanceof OwnableEntity o && o.getOwnerUUID() != null) {
-            return player.getUUID().equals(o.getOwnerUUID()) ? null : RankFlag.INTERACT;
-        }
-        if (t instanceof Animal a) {
-            if (!hand.isEmpty() && (a.isFood(hand) || a instanceof net.neoforged.neoforge.common.IShearable)) return RankFlag.FARMING;
-            if (t instanceof Saddleable || t instanceof AbstractHorse) return RankFlag.VEHICLES;
-            return RankFlag.FARMING;
-        }
-        if (t instanceof Saddleable) return RankFlag.VEHICLES;
-        return RankFlag.INTERACT;
+        return switch (t) {
+            case AbstractVillager v -> RankFlag.TRADING;
+            case ContainerEntity c -> RankFlag.CONTAINERS; // chest boats and chest minecarts
+            case LeashFenceKnotEntity k -> RankFlag.INTERACT;
+            case HangingEntity h -> RankFlag.BUILD;
+            case ArmorStand s -> RankFlag.BUILD;
+            case Boat b -> RankFlag.VEHICLES;
+            case AbstractMinecart m -> RankFlag.VEHICLES;
+            case OwnableEntity o when o.getOwnerUUID() != null ->
+                    player.getUUID().equals(o.getOwnerUUID()) ? null : RankFlag.INTERACT;
+            case Animal a -> {
+                if (!hand.isEmpty() && (a.isFood(hand) || a instanceof net.neoforged.neoforge.common.IShearable)) yield RankFlag.FARMING;
+                yield a instanceof Saddleable ? RankFlag.VEHICLES : RankFlag.FARMING; // horses are Saddleable
+            }
+            case Saddleable s -> RankFlag.VEHICLES;
+            default -> RankFlag.INTERACT;
+        };
     }
 
     /** Hitting this entity needs which flag? null = not protected. */

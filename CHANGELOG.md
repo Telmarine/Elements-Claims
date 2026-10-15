@@ -2,6 +2,9 @@
 
 ## 1.0.0 (in development)
 
+### Server log
+- Auto-sort no longer floods the server log with RuntimeDistCleaner errors at startup. It used reflection to check which blocks and items have their own right-click code, which made the server try to load client-only classes. It now reads the method names from the class files instead.
+
 ### Properties, transfers and no more land market
 - Properties are never merged now. If you own more than one, every chunk you claim goes to your active property, wherever it is. A property can have chunks in the Overworld, the Nether and the End. New properties are only started with `/claim create <name>`. Switch the active one with `/claim <property> manage`, or right-click it in your claim list.
 - Added `/claim <property> transfer <player>` with a confirm screen. The receiver has to be online and have enough free chunks. They choose to add it to their current property, or keep it as its own property if they have a free slot. Both sides see the chunk count, and only the receiver sees their own free chunks.
