@@ -1,5 +1,19 @@
 # Elements: Claims changelog
 
+## 1.0.1
+
+### Map support
+- Players with a supported client map mod see the claims around them on their map: outlines, names, owners, their own rank, sub-areas and their chunk counts. Players without it get nothing.
+- Claiming and unclaiming chunks or whole areas from the map. Every request goes through the same checks as the Claim Deed, so rank limits apply.
+- The claim's Land Config can be opened from the map, and the active property can be switched there.
+- New claim marks: shared map marks for a claim (for example "Base"), made by the owner or a rank with Manage Land. Up to 10 per claim by default.
+- New **View Claim Marks** rank flag. On for Members and above, off for Visitors.
+- New `[cartography]` section in claims.toml: `range`, `claim_range`, `show_private_names`, `marks_per_claim` and `requests_per_second`. New `cartography` switch under `[maps]` in features.toml.
+- `/claims reload` now resends claims to every player's map.
+
+### Server log
+- A warning is logged if saving claims takes longer than 10 seconds when the server stops.
+
 ## 1.0.0 (in development)
 
 ### Server log
