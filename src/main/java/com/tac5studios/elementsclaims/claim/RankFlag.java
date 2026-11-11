@@ -28,6 +28,7 @@ public enum RankFlag {
     ATTACK_MONSTERS("Hit hostile mobs."),
     SHOPS_USE("Use shops in the claim."),
     SHOPS_CREATE("Create shops in the claim."),
+    VIEW_CLAIM_MARKS("See the claim's shared marks on Codex: Cartography."),
     MANAGE_PLAYERS("Promote, demote and remove players."),
     MANAGE_LAND("Rename the claim and see its ranks. Flags are always set by the owner."),
     SUB_AREAS("Create and edit sub-areas."),
@@ -55,7 +56,7 @@ public enum RankFlag {
     /** Flags checked by the world protection (the rest are menu/management rights or come with later features). */
     public boolean checkedInWorld() {
         return switch (this) {
-            case SHOPS_USE, SHOPS_CREATE, MANAGE_PLAYERS, MANAGE_LAND, SUB_AREAS, ADMIN_MODE -> false;
+            case SHOPS_USE, SHOPS_CREATE, VIEW_CLAIM_MARKS, MANAGE_PLAYERS, MANAGE_LAND, SUB_AREAS, ADMIN_MODE -> false;
             default -> true;
         };
     }
@@ -82,7 +83,7 @@ public enum RankFlag {
 
     public static Set<RankFlag> memberDefaults() {
         return EnumSet.of(ENTER, BUILD, CONTAINERS, DOORS, REDSTONE, INTERACT, FARMING, TRADING, VEHICLES,
-                ITEM_PICKUP, TELEPORT_ITEMS, FLIGHT, ATTACK_ANIMALS, ATTACK_MONSTERS, SHOPS_USE);
+                ITEM_PICKUP, TELEPORT_ITEMS, FLIGHT, ATTACK_ANIMALS, ATTACK_MONSTERS, SHOPS_USE, VIEW_CLAIM_MARKS);
     }
 
     /** Visitor = everyone who isn't a member: walk around, use shops and fight hostile mobs. Farm animals stay safe. */

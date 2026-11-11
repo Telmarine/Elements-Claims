@@ -336,6 +336,7 @@ public final class ClaimCommands {
         com.tac5studios.elementsclaims.market.Expiry.reload();
         com.tac5studios.elementsclaims.detect.AutoSort.reload();
         com.tac5studios.elementsclaims.integration.Integrations.reload();
+        com.tac5studios.elementsclaims.maps.CartographyChannel.resendAll(ctx.getSource().getServer());
         Msg.sendLogged(ctx.getSource(), "admin.reloaded");
         StaffCommands.logStaff(ctx.getSource(), "reload", "config files");
         return 1;

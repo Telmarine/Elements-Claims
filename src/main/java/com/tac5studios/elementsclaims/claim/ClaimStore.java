@@ -112,7 +112,9 @@ public final class ClaimStore {
             String json = dirty ? serialize() : null;
             writer.shutdown();
             try {
-                writer.awaitTermination(10, TimeUnit.SECONDS);
+                if (!writer.awaitTermination(10, TimeUnit.SECONDS)) {
+                    ElementsClaims.LOGGER.warn("[Claims] Save writer did not finish within 10 seconds.");
+                }
             } catch (InterruptedException ignored) {
                 Thread.currentThread().interrupt();
             }
@@ -417,7 +419,7 @@ public final class ClaimStore {
             List<Path> list = backups(prefix);
             if (list.isEmpty()) continue;
             try {
-                long t = Files.getLastModifiedTime(list.get(0)).toMillis();
+                long t = Files.getLastModifiedTime(list.getFirst()).toMillis();
                 if (prefix.equals("hourly-")) lastHourly = t;
                 else lastDaily = t;
             } catch (IOException ignored) {
@@ -596,6 +598,22 @@ public final class ClaimStore {
             for (SubArea s : c.subAreas()) subs.add(writeSub(s));
             o.add("sub_areas", subs);
         }
+        if (!c.marks().isEmpty()) {
+            JsonArray marks = new JsonArray();
+            for (ClaimMark m : c.marks()) {
+                JsonObject mo = new JsonObject();
+                mo.addProperty("id", m.id().toString());
+                mo.addProperty("name", m.name());
+                mo.addProperty("emblem", m.emblem());
+                mo.addProperty("color", m.color());
+                mo.addProperty("dimension", m.dimension());
+                mo.addProperty("x", m.x());
+                mo.addProperty("y", m.y());
+                mo.addProperty("z", m.z());
+                marks.add(mo);
+            }
+            o.add("claim_marks", marks);
+        }
         return o;
     }
 
@@ -698,12 +716,12 @@ public final class ClaimStore {
             c.ranks().add(new Rank(ro.get("id").getAsString(), ro.get("name").getAsString(), fl));
         }
         // Owner first and Visitor last are required; repair a hand-edited file instead of failing.
-        if (c.rank(Rank.OWNER) == null) c.ranks().add(0, new Rank(Rank.OWNER, "Owner", RankFlag.all()));
+        if (c.rank(Rank.OWNER) == null) c.ranks().addFirst(new Rank(Rank.OWNER, "Owner", RankFlag.all()));
         if (c.rank(Rank.VISITOR) == null) c.ranks().add(new Rank(Rank.VISITOR, "Visitor", RankFlag.visitorDefaults()));
         Rank ownerRank = c.rank(Rank.OWNER), visitor = c.rank(Rank.VISITOR);
         c.ranks().remove(ownerRank);
         c.ranks().remove(visitor);
-        c.ranks().add(0, ownerRank);
+        c.ranks().addFirst(ownerRank);
         c.ranks().add(visitor);
         if (o.has("members")) {
             for (Map.Entry<String, JsonElement> m : o.getAsJsonObject("members").entrySet()) {
@@ -736,6 +754,18 @@ public final class ClaimStore {
                     c.subAreas().add(readSub(e.getAsJsonObject(), c.dimension()));
                 } catch (RuntimeException ex) {
                     ElementsClaims.LOGGER.warn("[Claims] Skipped a sub-area in {}: {}", c.name(), ex.toString());
+                }
+            }
+        }
+        if (o.has("claim_marks")) {
+            for (JsonElement e : o.getAsJsonArray("claim_marks")) {
+                try {
+                    JsonObject mo = e.getAsJsonObject();
+                    c.marks().add(new ClaimMark(UUID.fromString(mo.get("id").getAsString()), mo.get("name").getAsString(),
+                            mo.get("emblem").getAsString(), mo.get("color").getAsInt(), mo.get("dimension").getAsString(),
+                            mo.get("x").getAsInt(), mo.get("y").getAsInt(), mo.get("z").getAsInt()));
+                } catch (RuntimeException ex) {
+                    ElementsClaims.LOGGER.warn("[Claims] Skipped a claim mark in {}: {}", c.name(), ex.toString());
                 }
             }
         }

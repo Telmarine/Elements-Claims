@@ -61,7 +61,7 @@ public final class Features {
     public static BooleanValue EXPIRY, EXPIRY_NOTIFY, EXPIRY_PLAYTIME;
 
     // Importers and maps
-    public static BooleanValue IMPORT, IMPORT_OPAC, IMPORT_FTB, IMPORT_FLAN, IMPORT_CADMUS, MAPS, MAP_BLUEMAP, MAP_SQUAREMAP;
+    public static BooleanValue IMPORT, IMPORT_OPAC, IMPORT_FTB, IMPORT_FLAN, IMPORT_CADMUS, MAPS, MAP_BLUEMAP, MAP_SQUAREMAP, MAP_CARTOGRAPHY;
 
     // Land Config menu
     public static BooleanValue MENU, MENU_SOUNDS, MENU_LAND_FLAGS, MENU_RANKS, MENU_CUSTOM_RANKS, MENU_PLAYERS,
@@ -222,6 +222,7 @@ public final class Features {
         MAPS = sw(b, "enabled", true, "Turn map markers on or off. (restart)");
         MAP_BLUEMAP = sw(b, "bluemap", true, "Show claims on BlueMap.");
         MAP_SQUAREMAP = sw(b, "squaremap", true, "Show claims on squaremap.");
+        MAP_CARTOGRAPHY = sw(b, "cartography", true, "Send claims to players who have Codex: Cartography (claims drawn on their map, claiming from the map, claim marks). Players without it get nothing. (restart)");
         b.pop();
 
         b.comment("Staff commands under /claims.").push("admin");
@@ -317,20 +318,20 @@ public final class Features {
     public static boolean mod(String modid) {
         if (!on(INTEGRATIONS)) return false;
         BooleanValue v = MODS.get(modid);
-        return v != null && on(v);
+        return on(v);
     }
 
     /** True when lag limits are on and this vanilla limit is switched on. */
     public static boolean limitOn(String key) {
         if (!on(LIMITS)) return false;
         BooleanValue v = LIMIT_SWITCHES.get(key);
-        return v != null && on(v);
+        return on(v);
     }
 
     /** True when lag limits are on and this mod's limits file is switched on. */
     public static boolean modLimitsOn(String modid) {
         if (!on(LIMITS)) return false;
         BooleanValue v = MOD_LIMITS.get(modid);
-        return v != null && on(v);
+        return on(v);
     }
 }

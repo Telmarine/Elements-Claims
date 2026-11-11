@@ -32,6 +32,8 @@ public final class Claim {
     private final Map<LandFlag, Boolean> landFlags = new EnumMap<>(LandFlag.class);
     private final long created;
     private final java.util.List<SubArea> subAreas = new java.util.ArrayList<>();
+    /** Claim marks: shared marks Codex: Cartography shows to the claim's trusted players. */
+    private final java.util.List<ClaimMark> marks = new java.util.ArrayList<>();
 
     // Expiry
     public long abandonedSince;
@@ -80,6 +82,10 @@ public final class Claim {
 
     public java.util.List<SubArea> subAreas() {
         return subAreas;
+    }
+
+    public java.util.List<ClaimMark> marks() {
+        return marks;
     }
 
     public SubArea subAreaAt(String dim, net.minecraft.core.BlockPos pos) {
@@ -178,11 +184,11 @@ public final class Claim {
     }
 
     public Rank ownerRank() {
-        return ranks.get(0);
+        return ranks.getFirst();
     }
 
     public Rank visitorRank() {
-        return ranks.get(ranks.size() - 1);
+        return ranks.getLast();
     }
 
     /** The lowest rank above Visitor. /trust puts players here. */

@@ -46,10 +46,14 @@ public final class ClaimsConfig {
     public static Block blockOwn = Blocks.LIME_CONCRETE, blockTrusted = Blocks.LIGHT_BLUE_CONCRETE, blockOther = Blocks.RED_CONCRETE,
             blockAdmin = Blocks.ORANGE_CONCRETE, blockSubArea = Blocks.YELLOW_CONCRETE, blockPreview = Blocks.WHITE_CONCRETE;
     public static int colorOther, colorAdmin;
+    /** [cartography] - claims sent to Codex: Cartography. */
+    public static int mapRange = 16, mapClaimRange = 32, mapMarksPerClaim = 10, mapRequestsPerSecond = 4;
+    public static boolean mapShowPrivateNames;
 
     private ClaimsConfig() {}
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
+    @SuppressWarnings("unused") // the event is only the trigger
     public static void onAboutToStart(ServerAboutToStartEvent e) {
         load();
     }
@@ -85,6 +89,11 @@ public final class ClaimsConfig {
         blockPreview = block(FILE.str("borders.blocks.preview", "minecraft:white_concrete"), Blocks.WHITE_CONCRETE);
         colorOther = color(FILE.str("maps.colors.other", "#FF5555"), 0xFF5555);
         colorAdmin = color(FILE.str("maps.colors.admin", "#FFAA00"), 0xFFAA00);
+        mapRange = Math.max(4, Math.min(64, FILE.num("cartography.range", 16)));
+        mapClaimRange = Math.max(1, Math.min(256, FILE.num("cartography.claim_range", 32)));
+        mapShowPrivateNames = FILE.bool("cartography.show_private_names", false);
+        mapMarksPerClaim = Math.max(0, Math.min(50, FILE.num("cartography.marks_per_claim", 10)));
+        mapRequestsPerSecond = Math.max(1, Math.min(20, FILE.num("cartography.requests_per_second", 4)));
     }
 
     /** Keeps a property count between 1 and the hard cap of 5. */

@@ -10,7 +10,6 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.ChunkPos;
 
-import java.util.List;
 import java.util.UUID;
 
 /** Claiming and unclaiming chunks, with every rule checked in one place. */
@@ -99,12 +98,18 @@ public final class Claiming {
      *                    property with that name here (/claim create), which then becomes the active one.
      */
     public static boolean claimHere(ServerPlayer player, String newProperty) {
+        return claimAt(player, ClaimStore.dim(player.level()), player.chunkPosition(), newProperty, false);
+    }
+
+    /**
+     * Claim one chunk for a player: the one place every claiming rule is checked (Deed, /claim and the map).
+     * Messages the player when something is refused; with quiet, the "claimed" line is left to the caller.
+     */
+    public static boolean claimAt(ServerPlayer player, String dim, ChunkPos pos, String newProperty, boolean quiet) {
         if (!Features.on(Features.CLAIMS)) {
             Msg.send(player, "general.disabled");
             return false;
         }
-        String dim = ClaimStore.dim(player.level());
-        ChunkPos pos = player.chunkPosition();
         if (!ClaimsConfig.dimensionAllowed(dim)) {
             Msg.send(player, "claim.dimension_blocked");
             return false;
@@ -150,7 +155,7 @@ public final class Claiming {
                 return false;
             }
         }
-        if (com.tac5studios.elementsclaims.integration.Integrations.inColony(player.level(), player.blockPosition())) {
+        if (com.tac5studios.elementsclaims.integration.Integrations.inColony(player.level(), pos.getMiddleBlockPosition(player.getBlockY()))) {
             Msg.send(player, "claim.colony");
             return false;
         }
@@ -167,9 +172,9 @@ public final class Claiming {
             setActive(id, c);
             if (propertiesUsed(id) > 1) Msg.send(player, "claim.new_property", "claim", c.name());
         }
-        Msg.send(player, "claim.claimed", "claim", c.name(), "used", used + 1, "max", max);
+        if (!quiet) Msg.send(player, "claim.claimed", "claim", c.name(), "used", used + 1, "max", max);
         if (isNew) ActionLog.log(ActionLog.Category.CLAIMING, player, c, "property made", c.name());
-        ActionLog.log(ActionLog.Category.CLAIMING, player, c, "claimed", ActionLog.chunk(dim, pos.x, pos.z));
+        ActionLog.log(ActionLog.Category.CLAIMING, player, c, "claimed", ActionLog.chunk(dim, pos.x, pos.z) + (quiet ? " (map)" : ""));
         return true;
     }
 
@@ -268,12 +273,15 @@ public final class Claiming {
 
     /** Unclaim the chunk the player stands in. Owners, and staff with claims.bypass. */
     public static boolean unclaimHere(ServerPlayer player) {
+        return unclaimAt(player, ClaimStore.dim(player.level()), player.chunkPosition(), false);
+    }
+
+    /** Unclaim one chunk: owners, and staff with claims.bypass (claims.admin for admin claims). Same rules as the Deed. */
+    public static boolean unclaimAt(ServerPlayer player, String dim, ChunkPos pos, boolean quiet) {
         if (!Features.on(Features.CLAIMS, Features.CLAIM_UNCLAIM)) {
             Msg.send(player, "general.disabled");
             return false;
         }
-        String dim = ClaimStore.dim(player.level());
-        ChunkPos pos = player.chunkPosition();
         Claim c = ClaimStore.at(dim, pos);
         if (c == null) {
             Msg.send(player, "claim.not_claimed");
@@ -291,7 +299,9 @@ public final class Claiming {
         boolean gone = ClaimStore.byId(c.id()) == null;
         ActionLog.log(c.isAdmin() ? ActionLog.Category.STAFF : ActionLog.Category.CLAIMING, player, c,
                 c.isAdmin() ? "admin unclaimed" : "unclaimed",
-                ActionLog.chunk(dim, pos.x, pos.z) + (gone ? " (last chunk, property removed)" : "") + (own || c.isAdmin() ? "" : " (staff)"));
+                ActionLog.chunk(dim, pos.x, pos.z) + (gone ? " (last chunk, property removed)" : "") + (own || c.isAdmin() ? "" : " (staff)")
+                        + (quiet ? " (map)" : ""));
+        if (quiet) return true;
         if (own) {
             int used = ClaimStore.chunksUsed(player.getUUID());
             Msg.send(player, "claim.unclaimed", "claim", c.name(), "used", used, "max", allowance(player));

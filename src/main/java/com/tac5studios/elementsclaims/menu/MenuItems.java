@@ -48,6 +48,7 @@ public final class MenuItems {
             case MANAGE_LAND -> Items.FILLED_MAP;
             case SUB_AREAS -> Items.STICK;
             case ADMIN_MODE -> Items.TRIAL_KEY;
+            case VIEW_CLAIM_MARKS -> Items.MAP;
         };
     }
 
@@ -96,7 +97,7 @@ public final class MenuItems {
         StringBuilder b = new StringBuilder();
         for (String part : key.split("_")) {
             if (part.isEmpty()) continue;
-            if (b.length() > 0) b.append(' ');
+            if (!b.isEmpty()) b.append(' ');
             b.append(Character.toUpperCase(part.charAt(0))).append(part.substring(1));
         }
         return b.toString();

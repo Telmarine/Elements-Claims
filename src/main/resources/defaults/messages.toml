@@ -48,6 +48,16 @@ list_header = "{prefix}&7Your claims (&f{count}&7) — chunks claimed: &f{used}&
 list_line = " &8- &f{claim} &7{chunks} chunks · {dimension} near {x}, {z} · {members} trusted"
 list_empty = " &7You have no claims yet. Right-click with your Claim Deed to claim the chunk you stand in."
 
+
+[map]
+# Codex: Cartography (claiming from the map).
+claimed = "{prefix}&aClaimed &f{count}&a chunk(s) from the map. &7(Chunks claimed: &f{used}&7 / &f{max}&7)"
+unclaimed = "{prefix}&aUnclaimed &f{count}&a chunk(s) from the map. &7(Chunks claimed: &f{used}&7 / &f{max}&7)"
+not_enough = "{prefix}&cThat's more chunks than you have left. You can still claim &f{left}&c."
+too_far = "{prefix}&cYou can only claim from the map within &f{range}&c chunks of where you stand."
+other_dimension = "{prefix}&cYou can only claim from the map in the dimension you're in."
+marks_full = "{prefix}&cThis claim already has &f{max}&c claim marks."
+
 [deed]
 name = "&a&lClaim Deed"
 # Lines are split at \n. {used} and {max} update live.
@@ -292,6 +302,7 @@ attack_animals = "Attack Animals"
 attack_monsters = "Attack Monsters"
 shops_use = "Shops: Use"
 shops_create = "Shops: Create"
+view_claim_marks = "View claim marks"
 manage_players = "Manage Players"
 manage_land = "Manage Land"
 sub_areas = "Sub-areas"
@@ -317,6 +328,7 @@ attack_animals = "Hit animals and villagers"
 attack_monsters = "Hit hostile mobs"
 shops_use = "Buy and sell at shops"
 shops_create = "Create shops"
+view_claim_marks = "See the claim's shared marks on Codex: Cartography"
 manage_players = "Promote, demote and remove lower ranks"
 manage_land = "Rename the claim and see its ranks"
 sub_areas = "Create and edit sub-areas"

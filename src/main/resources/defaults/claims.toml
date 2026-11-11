@@ -79,6 +79,20 @@ preview = "minecraft:white_concrete"
 other = "#FF5555"
 admin = "#FFAA00"
 
+
+[cartography]
+# Players who have Codex: Cartography see claims on their map. Switch: features.toml [maps] cartography.
+# Claims sent around each player (chunks).
+range = 16
+# How far from where they stand players can claim from the map (chunks).
+claim_range = 32
+# Show the names of private claims on the map anyway.
+show_private_names = false
+# Most claim marks per claim.
+marks_per_claim = 10
+# Map requests (claim, unclaim, marks) a player can send per second.
+requests_per_second = 4
+
 [backups]
 # How many backups of claims.json to keep in <world>/elements_claims/backups/. Switches are in features.toml [backups].
 keep_hourly = 5

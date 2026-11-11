@@ -215,3 +215,66 @@ Known-mod hooks switch on only when that mod is installed (detected by mod ID at
 - Integrations researched from each mod's 1.21.1 source. Mods without events (Create contraptions, Crystal Tools extras, Tom's connectors) are handled with optional mixins that do nothing when the mod is missing.
 - Nexus (side panel claim name, waystone rules, `/sethome`), Elements: Armor Stands and Elements: Economy (Shops: Create) need a small update in those mods to call `ClaimsAPI`.
 - Not possible / not included: JourneyMap overlays (needs JourneyMap's API library to build), Xaero's maps (client mod only), Dynmap (no NeoForge 1.21.1 build).
+
+## 14. Codex: Cartography support (planned)
+
+What Claims needs so claims show on the Codex: Cartography minimap and world map, and can be claimed from it. Spec only, nothing built. Claims stays server-only and keeps working for players without the map.
+
+### Map channel
+- One **optional** network channel (`elements_claims:map`), registered on the server. Optional means vanilla clients and clients without Cartography connect as before and never get anything on it.
+- Data only goes to players whose client has Cartography (the channel tells Claims which players have it).
+- Switch: `cartography` under `[maps]` in features.toml (on by default). Settings in claims.toml `[cartography]` (reload with `/claims reload`).
+
+### What's sent
+- **Claims around the player:** every claim with chunks within `range` (default 16 chunks) of the player, in their dimension. Per claim:
+  - claim id, property name, owner name (admin claims: the admin claim's name, no owner)
+  - its chunks in that dimension, inside the range
+  - the player's standing: owner, trusted (with their rank name), banned, or not trusted
+  - admin claim yes/no, private yes/no
+  - the claim's outline color (the same standing colors the in-world outlines use)
+  - its sub-areas: box corners, name, and the player's rank in the sub-area if they have one
+- **Private claims:** players who aren't trusted see the outline but not the name or owner ("Private land"). `show_private_names` (off by default) shows them anyway.
+- **Player's own numbers:** chunks used / allowance (`claims.limit`, else the starter value), properties used / max (`claims.properties`, else `properties.max`), and their active property.
+- **When it's sent:** on join, on dimension change, when the player moves into a new chunk band (only the new edge is sent), and when a claim in range changes (claimed, unclaimed, renamed, trust or rank changed, banned, private toggled, sub-area added/changed/removed). Changes are batched and sent at most once a second. Nothing is sent every tick.
+- On `/claims reload` everything is resent.
+
+### Requests from the map
+All requests run through the same code as the Claim Deed and the menus. The map only asks; Claims decides.
+- **Claim chunks:** a list of chunks. Checks, per chunk, in order: claiming switched on, same dimension as the player, within `claim_range` of the player (default 32 chunks, so land can't be claimed from across the world), not claimed by anyone, not blocked by admin rules, chunks left under `claims.limit`, property rules (chunks go to the active property; a new property only through the map's "new property" action, which checks `claims.properties`). If the selection is bigger than what's left, nothing is claimed and the player is told how many they can still claim.
+- **Unclaim chunks:** only the player's own chunks (or chunks of a claim where their rank has Manage Land, if Claims allows that for unclaiming, same as the Deed).
+- **New property here:** same as `/claim create <name>`, with the name typed on the map.
+- **Open Land Config:** opens the normal Land Config menu for that claim (the player must be allowed to open it, same as `/claim`).
+- **Set active property:** same as `/claim <property> manage`.
+- Every request is rate limited (`requests_per_second`, default 4) and logged in the action log like the same action from the Deed, with "(map)" added.
+- The claiming code is split so the Deed, `/claim` and the map all call one `claimAt(player, dimension, chunk)` / `unclaimAt(...)` method; no second copy of the rules.
+
+### Claim marks
+- Shared marks for a claim: name, emblem id, color, position. Shown on Cartography to the claim's trusted players.
+- Made, edited and removed by the owner, or ranks with Manage Land, from the map (the map sends the request) or from a new **Marks** page in Land Config (chest menu, so it works without the map too: list, rename, remove).
+- Limit per claim: `marks_per_claim` (default 10).
+- Stored with the claim in claims.json, so backups and transfers keep them. A transfer keeps the marks; a claim that's unclaimed loses them.
+- Sent with the claim data to trusted players only. Players who lose trust stop getting them.
+- Action log entries for added, renamed and removed marks.
+
+### Rank flag
+- New rank flag **View claim marks** (on for every trusted rank by default, never for Visitor), so an owner can keep marks to a few ranks.
+
+### claims.toml
+```
+[cartography]
+range = 16                 # chunks around the player sent to the map
+claim_range = 32           # how far from the player chunks can be claimed from the map
+show_private_names = false
+marks_per_claim = 10
+requests_per_second = 4
+```
+
+### messages.toml
+New lines for map results: claimed N chunks, unclaimed N chunks, too far away, not enough chunks left (with the number left), chunk already claimed, property limit reached, mark added/removed, mark limit reached. Same `&` colors as the rest.
+
+### Permissions
+No new nodes. `claims.limit`, `claims.properties`, `claims.bypass` and `claims.admin` apply exactly as they do for the Deed and menus. Staff with `claims.admin` can open any claim's Land Config from the map, same as from `/claims info`.
+
+### Docs
+- README: a short "Codex: Cartography" section (claims on the map, claiming from the map, claim marks; Cartography is optional).
+- The map channel format is written up in `docs/MAP_CHANNEL.md`, so other map mods could read it later.
